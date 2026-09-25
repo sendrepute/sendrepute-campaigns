@@ -12,8 +12,8 @@ Download the [v0.1.3 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw
 
 ### Changes in 0.1.3
 
-- Standard template cards select and open the canonical editable MJML in one click. Gallery previews bundle the three exact photographic thumbnails for offline rendering, while preserving authored dark-preview styling and keeping exported MJML unchanged.
-- Includes all the corrections, VIP purchase protections, and lazy catalog previews from 0.1.2.
+- VIP purchase pending state is persisted before the request is sent, so reloading while a purchase is still in flight preserves the uncertain-outcome lock rather than allowing a duplicate charge.
+- Includes the 0.1.2 corrections, VIP consent, and catalog preview improvements.
 
 ### Changes in 0.1.2
 
