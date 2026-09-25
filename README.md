@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.13
+# SendRepute Campaigns 0.1.14
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,12 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.13 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.13/downloads/sendrepute-campaigns-0.1.13.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.13/downloads/sendrepute-campaigns-0.1.13.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.13/downloads/sendrepute-campaigns-0.1.13-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.14 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.14/downloads/sendrepute-campaigns-0.1.14.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.14/downloads/sendrepute-campaigns-0.1.14.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.14/downloads/sendrepute-campaigns-0.1.14-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.14
+
+- Standard and VIP AI generation use one persistent, centered dialog across quote, generation, compilation and result. The loading artwork has a definite in-flow height so its animation remains visible instead of collapsing behind a black overlay.
+- Quotes can be cancelled without accepting late responses. The dialog does not close behind an active generation overlay. The free demo and contract-based tests are not evidence of a billable hosted generation.
 
 ### Changes in 0.1.13
 
