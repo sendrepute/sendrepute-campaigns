@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.15
+# SendRepute Campaigns 0.1.16
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,12 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.15 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.15/downloads/sendrepute-campaigns-0.1.15.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.15/downloads/sendrepute-campaigns-0.1.15.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.15/downloads/sendrepute-campaigns-0.1.15-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.16 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.16/downloads/sendrepute-campaigns-0.1.16.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.16/downloads/sendrepute-campaigns-0.1.16.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.16/downloads/sendrepute-campaigns-0.1.16-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.16
+
+- Saved Library badges now label all canonical MJML designs Standard, including prebuilt, AI-created and blank designs, rather than showing the retired Local MJML label. Native VIP documents retain their VIP label regardless of current entitlement.
+- Distinct gold crown VIP and teal Standard badges improve source recognition in the library. This frontend-only patch does not change the compiled server, bridge, delivery, SDK or installation configuration.
 
 ### Changes in 0.1.15
 
