@@ -1,6 +1,6 @@
-# SendRepute Campaigns 0.1.1
+# SendRepute Campaigns 0.1.2
 
-Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
+Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
 ![SendRepute Campaigns desktop preview](docs/assets/campaigns-github-desktop.jpg)
 
@@ -8,7 +8,19 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.1 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.1/downloads/sendrepute-campaigns-0.1.1.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.1/downloads/sendrepute-campaigns-0.1.1.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.1/downloads/sendrepute-campaigns-0.1.1-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.2 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.2/downloads/sendrepute-campaigns-0.1.2.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.2/downloads/sendrepute-campaigns-0.1.2.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.2/downloads/sendrepute-campaigns-0.1.2-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.2
+
+- Corrections use the central service's exact editable-word set and independent pending state.
+- VIP purchase requires a request ID and explicit price consent. An uncertain purchase remains blocked across navigation and reload instead of being retried automatically.
+- Catalog previews load automatically near the viewport center, reuse cached results, and respect rate-limit cooldowns.
+
+### Upgrade from 0.1.1
+
+Back up PostgreSQL, application data/encryption key and your private `.env` first. Verify the archive checksum and extract into a **new directory**. Stop the old Campaigns service before starting the new one; do not run both against the same database. Copy your existing `.env` without regenerating it, and retain the same Compose project name (default `sendrepute-campaigns`) and existing `campaigns-postgres` / `campaigns-data` volumes. Preserve any custom Compose overrides and bind-mount paths. Never use `docker compose down -v`.
+
+From the new directory run `docker compose up -d --build` with the same project/override options as the old installation. For non-Docker installations, keep the existing database URL, configuration, data directory and encryption key, install with `npm ci --omit=dev --ignore-scripts`, then restart your existing service against the new runtime. Hard-refresh the browser after upgrade. See [operations](docs/operations.md) for backup and rollback requirements. This patch requires no new npm SDK version and no Cloudflare deployment.
 
 Requirements: Linux x64/ARM64 with Docker Engine + Compose v2 (Windows users: Docker Desktop/WSL2); or Node.js 22+ and PostgreSQL for a non-Docker installation. Native Windows archive installation is unverified. Use persistent database and application volumes, a public HTTPS reverse proxy and DNS for production delivery, and outbound access to your chosen SMTP relay/provider. [Full installation instructions](docs/install.md).
 
@@ -33,4 +45,4 @@ Back up both PostgreSQL and the Campaigns application data/encryption key, plus 
 
 ## Release boundary
 
-This distribution deliberately excludes TypeScript source maps, main-site and scanner implementation, development tests and build toolchain. Browser assets and the three Campaigns runtime packages are precompiled; npm installs production dependencies from `package-lock.json` for the server. See [standalone server contract](docs/server-contract.md). The included build and runtime do not guarantee inbox placement, provider availability, or Docker/Windows compatibility beyond tested configurations.
+This distribution deliberately excludes TypeScript source maps, main-site and scanner implementation, development tests and build toolchain. Browser assets, the three Campaigns runtime packages and the public customer SDK are precompiled. The bridge installs the included SDK as a local package rather than relying on a newer registry SDK; npm installs other production dependencies from `package-lock.json`. See [standalone server contract](docs/server-contract.md). The included build and runtime do not guarantee inbox placement, provider availability, or Docker/Windows compatibility beyond tested configurations.

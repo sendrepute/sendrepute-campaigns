@@ -21,7 +21,7 @@
     "node": ">=18.17"
   },
   "dependencies": {
-    "@sendrepute/node": "0.1.2"
+    "@sendrepute/node": "file:../sendrepute-node"
   },
   "license": "MIT",
   "private": true

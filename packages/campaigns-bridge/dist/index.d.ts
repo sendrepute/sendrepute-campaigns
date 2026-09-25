@@ -11,6 +11,7 @@ export declare const PRODUCTION_API_BASE_URL: "https://www.sendrepute.com/api/";
 export declare const PRODUCTION_HOSTED_BUILDER_ORIGIN: string;
 export declare const MAX_BRIDGE_REQUEST_BYTES: number;
 export declare const MAX_BRIDGE_RESPONSE_BYTES: number;
+export declare const DEFAULT_AI_REWRITE_TIMEOUT_MS = 540000;
 export declare const DEFAULT_AI_GENERATION_TIMEOUT_MS = 120000;
 export declare const operationCapabilities: {
     readonly getCustomerApiModels: {
@@ -355,9 +356,11 @@ export declare class CampaignsBridgeError extends Error {
     readonly code: string;
     readonly status?: number;
     readonly requestId?: string;
+    readonly retryAfterSeconds?: number;
     constructor(code: string, message: string, details?: {
         status?: number;
         requestId?: string;
+        retryAfterSeconds?: number;
     });
 }
 export interface ActivationResult {

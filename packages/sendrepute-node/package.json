@@ -1,0 +1,53 @@
+{
+  "name": "@sendrepute/node",
+  "version": "0.1.2",
+  "description": "Typed, server-only Node.js SDK for the SendRepute customer API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "browser": "./dist/browser.js",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./nodemailer": {
+      "browser": "./dist/browser.js",
+      "types": "./dist/nodemailer.d.ts",
+      "import": "./dist/nodemailer.js",
+      "default": "./dist/nodemailer.js"
+    }
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "sideEffects": false,
+  "peerDependencies": {
+    "nodemailer": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "nodemailer": {
+      "optional": true
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sendrepute/sendrepute-node.git"
+  },
+  "homepage": "https://www.sendrepute.com",
+  "bugs": {
+    "url": "https://github.com/sendrepute/sendrepute-node/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "private": true
+}

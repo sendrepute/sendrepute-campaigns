@@ -5,6 +5,7 @@ COPY package.json package-lock.json ./
 COPY packages/campaigns-server/package.json packages/campaigns-server/package.json
 COPY packages/campaigns-delivery/package.json packages/campaigns-delivery/package.json
 COPY packages/campaigns-bridge/package.json packages/campaigns-bridge/package.json
+COPY packages/sendrepute-node/package.json packages/sendrepute-node/package.json
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 FROM node:22.14.0-bookworm-slim AS runtime

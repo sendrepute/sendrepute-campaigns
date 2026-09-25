@@ -204,6 +204,10 @@ function activationError(error) {
     }
     if (requestId)
         result.requestId = requestId;
+    if (status === 429 && typeof source.retryAfterSeconds === "number" &&
+        Number.isInteger(source.retryAfterSeconds) && source.retryAfterSeconds >= 0) {
+        result.retryAfterSeconds = source.retryAfterSeconds;
+    }
     return result;
 }
 function page(request) {
@@ -2835,10 +2839,14 @@ export function createCampaignsRouter(options = {}) {
             response.status(status).json(publicSubscriptionFailure(status, request.path));
             return;
         }
+        if (status === 429 && Number.isInteger(error.retryAfterSeconds) && error.retryAfterSeconds >= 0) {
+            response.set("Retry-After", String(error.retryAfterSeconds));
+        }
         response.status(status).json({
             error: status === 500 ? "Internal server error" : error.message,
             ...(error.code ? { code: error.code } : {}),
             ...(error.requestId ? { requestId: error.requestId } : {}),
+            ...(status === 429 && Number.isInteger(error.retryAfterSeconds) ? { retryAfterSeconds: error.retryAfterSeconds } : {}),
             ...(error.requiredScopes ? { requiredScopes: error.requiredScopes } : {}),
         });
     });

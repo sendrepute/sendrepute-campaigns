@@ -11,6 +11,10 @@ export const PRODUCTION_HOSTED_BUILDER_ORIGIN = new URL(PRODUCTION_API_BASE_URL)
 export const MAX_BRIDGE_REQUEST_BYTES = 4 * 1024 * 1024;
 export const MAX_BRIDGE_RESPONSE_BYTES = 16 * 1024 * 1024;
 const DEFAULT_BRIDGE_TIMEOUT_MS = 30_000;
+// Rewrite All can make several paced batches and repair rounds. The short
+// account/quote timeout aborts an otherwise healthy paid rewrite mid-flight.
+// Allow the central eight-minute deadline plus transport/settlement headroom.
+export const DEFAULT_AI_REWRITE_TIMEOUT_MS = 540_000;
 // The central regular-template endpoint has a 90 second provider deadline.
 // Leave room for validation and settlement while retaining the shorter default
 // for activation, pricing, and all other operations.
@@ -133,6 +137,7 @@ export class CampaignsBridgeError extends Error {
     code;
     status;
     requestId;
+    retryAfterSeconds;
     constructor(code, message, details = {}) {
         super(message);
         this.name = "CampaignsBridgeError";
@@ -141,6 +146,8 @@ export class CampaignsBridgeError extends Error {
             this.status = details.status;
         if (details.requestId !== undefined)
             this.requestId = details.requestId;
+        if (details.retryAfterSeconds !== undefined)
+            this.retryAfterSeconds = details.retryAfterSeconds;
     }
 }
 function testBaseUrl(value) {
@@ -300,6 +307,7 @@ function expectedPricing(pricing) {
 export class SendReputeClient {
     #client;
     #generationClient;
+    #rewriteClient;
     #secret;
     #baseUrl;
     #fetch;
@@ -367,6 +375,13 @@ export class SendReputeClient {
             maxRetries: 0,
             ...(options.test?.fetch ? { fetch: options.test.fetch } : {}),
         });
+        this.#rewriteClient = new PublishedClient({
+            apiKey: options.secret,
+            baseUrl,
+            timeoutMs: options.timeoutMs === undefined ? DEFAULT_AI_REWRITE_TIMEOUT_MS : timeoutMs,
+            maxRetries: 0,
+            ...(options.test?.fetch ? { fetch: options.test.fetch } : {}),
+        });
     }
     async createHostedBuilderHandoff(input) {
         assertBoundedRequest(input);
@@ -411,7 +426,9 @@ export class SendReputeClient {
             const client = operation === "customerCreateAiEmailTemplate" ||
                 operation === "customerCreateVipEmailTemplate"
                 ? this.#generationClient
-                : this.#client;
+                : operation === "customerRewriteFlaggedTermsWithAi"
+                    ? this.#rewriteClient
+                    : this.#client;
             return await client.request(operation, centralInput);
         }
         catch (error) {
@@ -423,7 +440,7 @@ export class SendReputeClient {
                             : undefined);
                 throw new CampaignsBridgeError(error.code, error.code === "REQUEST_TIMEOUT"
                     ? "SendRepute request timed out; its billing outcome may be unknown"
-                    : `SendRepute request failed${error.status === undefined ? "" : ` with status ${error.status}`} (${error.code})`, { status, requestId: error.requestId });
+                    : `SendRepute request failed${error.status === undefined ? "" : ` with status ${error.status}`} (${error.code})`, { status, requestId: error.requestId, ...(error.retryAfterMs !== undefined ? { retryAfterSeconds: Math.ceil(error.retryAfterMs / 1000) } : {}) });
             }
             throw new CampaignsBridgeError("REQUEST_FAILED", "SendRepute request failed", { status: 502 });
         }
