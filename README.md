@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.2
+# SendRepute Campaigns 0.1.3
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,12 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.2 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.2/downloads/sendrepute-campaigns-0.1.2.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.2/downloads/sendrepute-campaigns-0.1.2.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.2/downloads/sendrepute-campaigns-0.1.2-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.3 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.3/downloads/sendrepute-campaigns-0.1.3.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.3/downloads/sendrepute-campaigns-0.1.3.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.3/downloads/sendrepute-campaigns-0.1.3-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.3
+
+- Standard template cards select and open the canonical editable MJML in one click. Gallery previews bundle the three exact photographic thumbnails for offline rendering, while preserving authored dark-preview styling and keeping exported MJML unchanged.
+- Includes all the corrections, VIP purchase protections, and lazy catalog previews from 0.1.2.
 
 ### Changes in 0.1.2
 
@@ -16,7 +21,7 @@ Download the [v0.1.2 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw
 - VIP purchase requires a request ID and explicit price consent. An uncertain purchase remains blocked across navigation and reload instead of being retried automatically.
 - Catalog previews load automatically near the viewport center, reuse cached results, and respect rate-limit cooldowns.
 
-### Upgrade from 0.1.1
+### Upgrade from 0.1.2
 
 Back up PostgreSQL, application data/encryption key and your private `.env` first. Verify the archive checksum and extract into a **new directory**. Stop the old Campaigns service before starting the new one; do not run both against the same database. Copy your existing `.env` without regenerating it, and retain the same Compose project name (default `sendrepute-campaigns`) and existing `campaigns-postgres` / `campaigns-data` volumes. Preserve any custom Compose overrides and bind-mount paths. Never use `docker compose down -v`.
 
