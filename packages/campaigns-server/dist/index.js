@@ -603,13 +603,16 @@ async function validActivation(ctx, force = false) {
         throw failure;
     }
 }
-function safeConnection(value) {
+function safeConnection(value, credentialKey, secret) {
     const { activation: _activation, ...safe } = value;
     const configuredApiBaseUrl = safe.apiBaseUrl;
     const apiBaseUrl = configuredApiBaseUrl === undefined ? PRODUCTION_API_BASE_URL : configuredApiBaseUrl;
     return {
         ...safe,
         apiBaseUrl,
+        // Opaque, installation-keyed credential identity: stable across refreshes
+        // and reloads, but never reveals the API key or a guessed key's hash.
+        credentialFingerprint: createHmac("sha256", credentialKey).update("campaigns-connection-v1\0").update(secret).digest("hex"),
         // Older installations may predate this field. A missing value safely
         // derives from the fixed published API endpoint; an explicit mismatch is
         // never converted into trusted configuration.
@@ -2255,7 +2258,10 @@ export function createCampaignsRouter(options = {}) {
     }));
     router.get("/connection", need(), wrap(async (_request, response) => {
         const value = await validActivation(ctx, true);
-        response.json({ data: safeConnection(value) });
+        const item = await connection(ctx);
+        if (!item)
+            throw http(503, "Not installed");
+        response.json({ data: safeConnection(value, ctx.key, item.secret) });
     }));
     router.put("/connection", mutation, need("connection:manage"), wrap(async (request, response) => {
         const body = json(request.body);
@@ -2273,11 +2279,14 @@ export function createCampaignsRouter(options = {}) {
         const value = { configured: true, connected: true, apiBaseUrl: body.apiBaseUrl, accountEmail: null, accountId: null, plan: null, balanceMillicents: Number(balance?.availableMillicents ?? 0), lastCheckedAt: ctx.now().toISOString(), error: null, snapshot };
         await db.query("UPDATE campaigns.installation SET connection_secret=$1,connection=$2", [encrypted(ctx.key, String(body.apiKey)), value]);
         await audit(ctx, request, "connection.update", "connection", null);
-        response.json({ data: safeConnection(value) });
+        response.json({ data: safeConnection(value, ctx.key, String(body.apiKey)) });
     }));
     router.post("/connection/refresh", mutation, need("connection:manage"), wrap(async (_request, response) => {
         const value = await validActivation(ctx, true);
-        response.json({ data: safeConnection(value) });
+        const item = await connection(ctx);
+        if (!item)
+            throw http(503, "Not installed");
+        response.json({ data: safeConnection(value, ctx.key, item.secret) });
     }));
     router.post("/sendrepute", mutation, need("api:use"), wrap(async (request, response) => {
         const body = json(request.body);

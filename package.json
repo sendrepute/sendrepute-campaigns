@@ -1,6 +1,6 @@
 {
   "name": "sendrepute-campaigns-runtime",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "workspaces": [
     "packages/*"

@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.3
+# SendRepute Campaigns 0.1.4
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,20 +8,25 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.3 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.3/downloads/sendrepute-campaigns-0.1.3.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.3/downloads/sendrepute-campaigns-0.1.3.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.3/downloads/sendrepute-campaigns-0.1.3-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.4 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.4/downloads/sendrepute-campaigns-0.1.4.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.4/downloads/sendrepute-campaigns-0.1.4.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.4/downloads/sendrepute-campaigns-0.1.4-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
 
-### Changes in 0.1.3
+### Changes in 0.1.4
+
+- Fix VIP purchase identity for real connections with a null account ID: the server exposes a stable opaque, installation-keyed credential fingerprint, and the client uses it to retain the pending/uncertain purchase lock across reloads. The fingerprint does not reveal the API key.
+- **Do not upgrade to 0.1.2 or 0.1.3:** these earlier builds cannot reliably retain the VIP purchase lock for real nullable-account connections. Both are marked prerelease; use 0.1.4 instead.
+
+### Changes in 0.1.3 (superseded; do not install)
 
 - VIP purchase pending state is persisted before the request is sent, so reloading while a purchase is still in flight preserves the uncertain-outcome lock rather than allowing a duplicate charge.
 - Includes the 0.1.2 corrections, VIP consent, and catalog preview improvements.
 
-### Changes in 0.1.2
+### Changes in 0.1.2 (superseded; do not install)
 
 - Corrections use the central service's exact editable-word set and independent pending state.
 - VIP purchase requires a request ID and explicit price consent. An uncertain purchase remains blocked across navigation and reload instead of being retried automatically.
 - Catalog previews load automatically near the viewport center, reuse cached results, and respect rate-limit cooldowns.
 
-### Upgrade from 0.1.2
+### Upgrade from an earlier release
 
 Back up PostgreSQL, application data/encryption key and your private `.env` first. Verify the archive checksum and extract into a **new directory**. Stop the old Campaigns service before starting the new one; do not run both against the same database. Copy your existing `.env` without regenerating it, and retain the same Compose project name (default `sendrepute-campaigns`) and existing `campaigns-postgres` / `campaigns-data` volumes. Preserve any custom Compose overrides and bind-mount paths. Never use `docker compose down -v`.
 
