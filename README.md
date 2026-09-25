@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.11
+# SendRepute Campaigns 0.1.12
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.11 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.11/downloads/sendrepute-campaigns-0.1.11.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.11/downloads/sendrepute-campaigns-0.1.11.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.11/downloads/sendrepute-campaigns-0.1.11-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.12 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.12/downloads/sendrepute-campaigns-0.1.12.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.12/downloads/sendrepute-campaigns-0.1.12.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.12/downloads/sendrepute-campaigns-0.1.12-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.12
+
+- Standard and VIP design now share a clearer gallery with static CSS/DOM mini-thumbnails; viewing gallery cards does not automatically request image or detail previews. Saved Library appears above the gallery, and the active VIP tab remains selected.
+- Standard and native VIP AI generation use the actual hosted quote and generation operations. Standard scripts are included with the free automatic flow even at zero balance; paid generation still requires an explicit current quote and price consent, and a completed request is locked against accidental repeat charges. If compilation fails after a completed generation, the owned result remains available for a free compilation retry.
+- The generator shows a busy canvas while waiting, and the selected editor remains open after generation. The former local Grapes visual editor is replaced by the hosted Standard workflow; existing canonical MJML in saved templates remains preserved. Campaign Review retains the analysis and corrections entry point.
 
 ### Changes in 0.1.11
 
