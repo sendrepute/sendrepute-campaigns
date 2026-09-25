@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.9
+# SendRepute Campaigns 0.1.10
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.9 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.9/downloads/sendrepute-campaigns-0.1.9.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.9/downloads/sendrepute-campaigns-0.1.9.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.9/downloads/sendrepute-campaigns-0.1.9-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.10 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.10/downloads/sendrepute-campaigns-0.1.10.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.10/downloads/sendrepute-campaigns-0.1.10.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.10/downloads/sendrepute-campaigns-0.1.10-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.10
+
+- Analysis and corrections now offer an authoritative classifier-model selector in both the inline template editor and campaign preflight. The selector loads available models and the default from the customer API when needed; unavailable models cannot be selected.
+- Classification uses the selected model. Quotes, analysis freshness, and explicit price consent are bound to that model; switching models invalidates stale results and consent before another paid operation.
+- This frontend patch retains the compiled server, delivery, bridge, SDK, and installation configuration from 0.1.9. It does not claim to complete the in-progress task 617 or diagnose a user-specific paid correction failure.
 
 ### Changes in 0.1.9
 
