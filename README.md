@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.10
+# SendRepute Campaigns 0.1.11
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.10 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.10/downloads/sendrepute-campaigns-0.1.10.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.10/downloads/sendrepute-campaigns-0.1.10.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.10/downloads/sendrepute-campaigns-0.1.10-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.11 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.11/downloads/sendrepute-campaigns-0.1.11.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.11/downloads/sendrepute-campaigns-0.1.11.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.11/downloads/sendrepute-campaigns-0.1.11-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.11
+
+- Campaign Review retains the parent request ID returned by classification so the existing AI single/all correction quotes and actions can work, with their existing explicit paid consent and freshness guards.
+- Saving a visually edited imported Standard or VIP template creates a private campaign copy rather than overwriting the source template. The saved campaign reopens in its matching editor with its own source, compiled HTML and identity.
+- Visual editing handles compiled HTML with the HTML parser and safely adapts self-closing MJML tags and entities for that parser. The authored canonical MJML is not rewritten by preview normalization. This frontend patch makes no claim to resolve a user-specific paid request or to complete in-progress task 617.
 
 ### Changes in 0.1.10
 
