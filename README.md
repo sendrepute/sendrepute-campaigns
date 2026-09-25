@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.6
+# SendRepute Campaigns 0.1.7
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.6 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.6/downloads/sendrepute-campaigns-0.1.6.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.6/downloads/sendrepute-campaigns-0.1.6.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.6/downloads/sendrepute-campaigns-0.1.6-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.7 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.7/downloads/sendrepute-campaigns-0.1.7.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.7/downloads/sendrepute-campaigns-0.1.7.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.7/downloads/sendrepute-campaigns-0.1.7-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.7
+
+- Standard and VIP are exclusive across template and campaign entry points. The chooser stages a selection until Apply, without a duplicate sidebar/modal panel.
+- Analysis/corrections share a finite local progress flow. Paid rewrite quotes are bound to the current draft and price consent; reverting cannot overwrite newer edits, and compile failures remain visible.
+- Keeps the three offline photographic previews, protected nullable-account VIP purchase identity, and all 0.1.6 corrections. This release does not resolve the outstanding hosted MJML diagnostic.
 
 ### Changes in 0.1.6
 
