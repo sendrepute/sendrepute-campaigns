@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.12
+# SendRepute Campaigns 0.1.13
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,12 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.12 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.12/downloads/sendrepute-campaigns-0.1.12.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.12/downloads/sendrepute-campaigns-0.1.12.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.12/downloads/sendrepute-campaigns-0.1.12-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.13 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.13/downloads/sendrepute-campaigns-0.1.13.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.13/downloads/sendrepute-campaigns-0.1.13.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.13/downloads/sendrepute-campaigns-0.1.13-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.13
+
+- Demo AI generation accepts the real Standard MJML v1 and native VIP response shapes, including a successful compilation response with `valid: true`, and displays the current effective price. The same Standard loading phase and VIP native loading canvas remain visible during generation and compilation rather than switching to the earlier placeholder.
+- Standard and VIP generated designs can be saved and reopened with their owned content. This patch changes the browser frontend only; central API contracts and compiled server, bridge, delivery and SDK remain unchanged. Mock-provider and demo tests do not represent a billable hosted generation result.
 
 ### Changes in 0.1.12
 
