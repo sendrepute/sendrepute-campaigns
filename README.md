@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.14
+# SendRepute Campaigns 0.1.15
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.14 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.14/downloads/sendrepute-campaigns-0.1.14.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.14/downloads/sendrepute-campaigns-0.1.14.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.14/downloads/sendrepute-campaigns-0.1.14-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.15 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.15/downloads/sendrepute-campaigns-0.1.15.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.15/downloads/sendrepute-campaigns-0.1.15.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.15/downloads/sendrepute-campaigns-0.1.15-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.15
+
+- The Templates list now passes the actual generated result kind to the Standard/VIP callback, retaining native VIP document, access and HTML information rather than incorrectly rejecting a native VIP as Standard. A failed transfer retains the completed result for retry without another AI generation.
+- After selecting a template, choosing a blank design saves explicit minimal MJML instead of omitting the source and inadvertently restoring the previous template. Saved Library labels reflect the actual VIP, Standard, local MJML or HTML source.
+- This frontend patch does not make a billable-generation claim. Compiled server, bridge, delivery, SDK and installation configuration are unchanged from 0.1.14.
 
 ### Changes in 0.1.14
 
