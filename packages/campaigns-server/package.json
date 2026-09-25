@@ -1,0 +1,41 @@
+{
+  "name": "@workspace/campaigns-server",
+  "version": "0.1.0",
+  "description": "Standalone self-hosted backend for SendRepute Campaigns",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "sendrepute-campaigns": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "BACKUP.md",
+    "SUBSCRIBER-IDENTITY.md",
+    "review-subscriber-identities.mjs",
+    "reconcile-subscriber-identities.mjs",
+    "ACTIVATION-UI.md",
+    "TEST-SEND-UI.md",
+    "TELEGRAM-UI.md",
+    "AUTOMATIONS.md",
+    "openapi.delivery.json"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@workspace/campaigns-bridge": "file:../campaigns-bridge",
+    "@workspace/campaigns-delivery": "file:../campaigns-delivery",
+    "express": "^5.2.1",
+    "pg": "^8.16.3"
+  },
+  "license": "MIT",
+  "private": true
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@workspace/campaigns-bridge",
+  "version": "0.1.0",
+  "description": "Server-side, consent-gated bridge to the published SendRepute customer API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "@sendrepute/node": "0.1.2"
+  },
+  "license": "MIT",
+  "private": true
+}

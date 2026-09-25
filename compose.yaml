@@ -1,0 +1,48 @@
+name: sendrepute-campaigns
+services:
+  postgres:
+    image: postgres:17.4-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: campaigns
+      POSTGRES_USER: campaigns
+      POSTGRES_PASSWORD: ${CAMPAIGNS_POSTGRES_PASSWORD:?Run ./install.sh first}
+    volumes:
+      - campaigns-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campaigns -d campaigns"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  campaigns:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://campaigns:${CAMPAIGNS_POSTGRES_PASSWORD}@postgres:5432/campaigns
+      CAMPAIGNS_TRUST_PROXY: ${CAMPAIGNS_TRUST_PROXY:-false}
+    ports:
+      - "${CAMPAIGNS_BIND_ADDRESS:-127.0.0.1}:${CAMPAIGNS_HTTP_PORT:-8080}:8080"
+    volumes:
+      - campaigns-data:/var/lib/sendrepute-campaigns
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/campaigns/status').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  campaigns-postgres:
+  campaigns-data:
