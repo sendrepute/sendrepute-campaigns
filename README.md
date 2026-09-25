@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.8
+# SendRepute Campaigns 0.1.9
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.8 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.8/downloads/sendrepute-campaigns-0.1.8.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.8/downloads/sendrepute-campaigns-0.1.8.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.8/downloads/sendrepute-campaigns-0.1.8-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.9 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.9/downloads/sendrepute-campaigns-0.1.9.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.9/downloads/sendrepute-campaigns-0.1.9.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.9/downloads/sendrepute-campaigns-0.1.9-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.9
+
+- Template editor header controls wrap instead of overlapping at 320–390px widths in English and Arabic.
+- Content recommendations explain empty evidence for known issue codes. Failed correction requests surface available HTTP status, error code and safe request reference; a 502/503 does not claim a particular upstream service is broken or authorize a paid retry.
+- Retains the safe light-only previews, isolated builders, and protected paid-flow state from earlier stable releases. This patch does not claim to resolve the outstanding hosted MJML diagnostic or task 615.
 
 ### Changes in 0.1.8
 
