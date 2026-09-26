@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { compilePaidDesign } from "./paid-design-compiler.js";
+import { PaidRequestNotDispatchedError } from "@workspace/campaigns-bridge";
 export const paidDesignOperations = new Set(["customerCreateAiEmailTemplate", "customerCreateVipEmailTemplate", "customerCreateVipEmailBuilderAccess"]);
 const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -51,6 +52,8 @@ export class PaidDesigns {
             const old = (await this.db.query("SELECT * FROM campaigns.paid_designs WHERE id=$1 AND scope=$2 AND owner_id=$3", [id, this.scope, this.owner])).rows[0];
             if (!old || old.operation !== operation)
                 fail("Paid design identity belongs to another request", 409);
+            if (old.template_deleted_at)
+                fail("This saved design was deleted. The payment record is retained; no purchase was repeated.", 410);
             // JSONB key ordering is not stable; compare normalized structure.
             if (stable(old.input) !== stable(forwarded))
                 fail("Paid design identity payload mismatch", 409);
@@ -61,7 +64,16 @@ export class PaidDesigns {
             fail("Paid outcome is unresolved; consult /paid-designs. Do not repeat payment.", 409);
         }
         // The committed intent always precedes the only paid call.
-        const result = object(await this.execute(operation, forwarded));
+        let result;
+        try {
+            result = object(await this.execute(operation, forwarded));
+        }
+        catch (error) {
+            if (error instanceof PaidRequestNotDispatchedError) {
+                await this.db.query("UPDATE campaigns.paid_designs SET status='failed',error=$2,updated_at=now() WHERE id=$1 AND scope=$3 AND owner_id=$4 AND status='pending'", [id, `No paid request was sent: preflight rejected (${error.code}). No automatic retry was made.`, this.scope, this.owner]);
+            }
+            throw error;
+        }
         await this.save(inserted.rows[0], result);
         return { ...result, savedTemplateId: id };
     }
@@ -124,7 +136,7 @@ export class PaidDesigns {
         }));
     }
     async reconcile(intent) {
-        if (intent.status !== "pending")
+        if (intent.status !== "pending" || intent.template_deleted_at)
             return;
         try {
             if (intent.operation === "customerCreateVipEmailBuilderAccess") {
@@ -148,7 +160,7 @@ export class PaidDesigns {
             }
         }
         catch {
-            await this.db.query("UPDATE campaigns.paid_designs SET error=$2,updated_at=now() WHERE id=$1 AND scope=$3 AND owner_id=$4 AND status='pending'", [intent.id, "Read-only recovery unavailable or invalid; payment was not retried", this.scope, this.owner]);
+            await this.db.query("UPDATE campaigns.paid_designs SET error=$2,updated_at=now() WHERE id=$1 AND scope=$3 AND owner_id=$4 AND status='pending'", [intent.id, "Payment outcome is unconfirmed: no verifiable saved result is available from the read-only check. This does not prove no charge. Keep this reference for support; do not purchase again.", this.scope, this.owner]);
         }
     }
     async list(templateId) {
@@ -156,7 +168,8 @@ export class PaidDesigns {
         await Promise.all(pending.rows.map(row => this.reconcile(row)));
         await this.repairPreviews(templateId);
         const rows = await this.db.query("SELECT * FROM campaigns.paid_designs WHERE scope=$1 AND owner_id=$2 ORDER BY created_at DESC,id LIMIT 100", [this.scope, this.owner]);
-        return { items: rows.rows.map(row => ({ id: row.id, status: row.status, templateId: row.status === "succeeded" ? row.id : null, ...(row.error ? { error: row.error } : {}) })) };
+        return { items: rows.rows.map(row => ({ id: row.id, status: row.template_deleted_at && row.status === "succeeded" ? "deleted" : row.status,
+                templateId: row.status === "succeeded" && !row.template_deleted_at ? row.id : null, ...(row.error ? { error: row.error } : {}) })) };
     }
 }
 //# sourceMappingURL=paid-designs.js.map

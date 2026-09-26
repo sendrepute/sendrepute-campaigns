@@ -6,9 +6,9 @@ Self-hosted campaign and subscriber management: manage audiences, campaigns, tem
 
 Try the **[interactive demo](https://www.sendrepute.com/campaigns/?demo=true)** or read the [Campaigns documentation](https://www.sendrepute.com/campaigns/docs). Demo AI and hosted builders are unavailable; the demo does not simulate a paid result.
 
-## Download v0.1.22
+## Download v0.1.23
 
-Download the [v0.1.22 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.22/downloads/sendrepute-campaigns-0.1.22.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.22/downloads/sendrepute-campaigns-0.1.22.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.22/downloads/sendrepute-campaigns-0.1.22-SHA256SUMS). These are versioned **repository downloads**, not GitHub Release binary attachments. GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Read the [v0.1.22 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.22) for changes and migration notes.
+Download the [v0.1.23 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.23/downloads/sendrepute-campaigns-0.1.23.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.23/downloads/sendrepute-campaigns-0.1.23.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.23/downloads/sendrepute-campaigns-0.1.23-SHA256SUMS). These are versioned **repository downloads**, not GitHub Release binary attachments. GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Read the [v0.1.23 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.23) for changes and migration notes.
 
 ## Install
 
@@ -33,7 +33,7 @@ Keep the token private. The wizard creates a local owner and validates a SendRep
 
 Back up PostgreSQL, application data/encryption key and your private `.env` first. Verify the archive checksum and extract into a **new directory**. Stop the old Campaigns service before starting the new one; do not run both against the same database. Copy your existing `.env` without regenerating it, and retain the same Compose project name (default `sendrepute-campaigns`) and existing `campaigns-postgres` / `campaigns-data` volumes. Preserve any custom Compose overrides and bind-mount paths. Never use `docker compose down -v`.
 
-From the new directory run `docker compose up -d --build` with the same project/override options. For non-Docker installations, keep the existing database URL, configuration, data directory and encryption key, run `npm ci --omit=dev --ignore-scripts`, then restart against the new runtime. Server startup applies included database migrations. Check health before resuming schedules and hard-refresh the browser. A rollback after migration may require restoring the **matching** pre-upgrade database and data directory. The application export alone does not preserve delivery history. See [operations, backup and restore](docs/operations.md) and the [release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.22). Do not commit `.env`, data, tokens or backups.
+From the new directory run `docker compose up -d --build` with the same project/override options. For non-Docker installations, keep the existing database URL, configuration, data directory and encryption key, run `npm ci --omit=dev --ignore-scripts`, then restart against the new runtime. Server startup applies included database migrations. Check health before resuming schedules and hard-refresh the browser. A rollback after migration may require restoring the **matching** pre-upgrade database and data directory. The application export alone does not preserve delivery history. See [operations, backup and restore](docs/operations.md) and the [release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.23). Do not commit `.env`, data, tokens or backups.
 
 ## Release boundary
 

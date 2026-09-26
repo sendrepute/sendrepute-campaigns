@@ -151,6 +151,15 @@ export class CampaignsBridgeError extends Error {
             this.retryAfterSeconds = details.retryAfterSeconds;
     }
 }
+/** In-process evidence only; never reconstructed from an upstream JSON flag. */
+export class PaidRequestNotDispatchedError extends CampaignsBridgeError {
+    constructor(cause) {
+        super(cause instanceof CampaignsBridgeError ? cause.code : "PAID_PREFLIGHT_REJECTED", cause instanceof Error ? cause.message : "Paid request was not dispatched", cause instanceof CampaignsBridgeError
+            ? { status: cause.status ?? 400, requestId: cause.requestId, retryAfterSeconds: cause.retryAfterSeconds }
+            : { status: 400 });
+        this.name = "PaidRequestNotDispatchedError";
+    }
+}
 function testBaseUrl(value) {
     let url;
     try {
@@ -553,6 +562,17 @@ export class SendReputeClient {
         };
     }
     async execute(operation, input) {
+        let dispatched = false;
+        try {
+            return await this.#executeAuthorized(operation, input, () => { dispatched = true; });
+        }
+        catch (error) {
+            if (!dispatched && operationCapabilities[operation]?.billable)
+                throw new PaidRequestNotDispatchedError(error);
+            throw error;
+        }
+    }
+    async #executeAuthorized(operation, input, dispatch) {
         const capability = operationCapabilities[operation];
         if (!capability)
             throw new TypeError(`Unsupported SendRepute operation: ${String(operation)}`);
@@ -675,6 +695,7 @@ export class SendReputeClient {
         else if (operation === "customerRewriteFlaggedTermsWithAi") {
             throw new CampaignsBridgeError("CONSENT_REQUIRED", "An authoritative AI rewrite quote is required", { status: 402 });
         }
+        dispatch();
         return this.#request(operation, authorizedInput);
     }
 }

@@ -369,6 +369,10 @@ export declare class CampaignsBridgeError extends Error {
         retryAfterSeconds?: number;
     });
 }
+/** In-process evidence only; never reconstructed from an upstream JSON flag. */
+export declare class PaidRequestNotDispatchedError extends CampaignsBridgeError {
+    constructor(cause: unknown);
+}
 export interface ActivationResult {
     active: true;
     requiredScopes: readonly ["account:read", "catalog:read", "usage:read"];

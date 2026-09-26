@@ -1758,6 +1758,35 @@ export function createCampaignsRouter(options = {}) {
             const id = String(request.params[`${singular}Id`]);
             const existing = await getEntity(ctx, kind, id);
             assertEntityAllowed(request, kind, existing);
+            if (kind === "templates") {
+                const client = await db.connect?.();
+                if (!client)
+                    throw http(500, "Template deletion requires a transaction-capable PostgreSQL pool");
+                try {
+                    await client.query("BEGIN");
+                    await client.query("SELECT id FROM campaigns.paid_designs WHERE id=$1 FOR UPDATE", [id]);
+                    const locked = await client.query("SELECT id FROM campaigns.entities WHERE kind='templates' AND id=$1 FOR UPDATE", [id]);
+                    if (!locked.rowCount)
+                        throw http(404, "Template not found");
+                    const references = await client.query(`SELECT 1 FROM campaigns.entities WHERE kind='campaigns' AND body->>'templateId'=$1
+            UNION ALL SELECT 1 FROM campaigns.subscription_customizations WHERE welcome_template_id::text=$1 OR goodbye_template_id::text=$1 LIMIT 1`, [id]);
+                    if (references.rowCount)
+                        throw http(409, "This template is used by a campaign or subscription email. Replace or remove those references before deleting it.");
+                    await client.query("UPDATE campaigns.paid_designs SET template_deleted_at=COALESCE(template_deleted_at,now()),updated_at=now() WHERE id=$1", [id]);
+                    await client.query("DELETE FROM campaigns.entities WHERE kind='templates' AND id=$1", [id]);
+                    await audit({ ...ctx, db: client }, request, "template.delete", kind, id);
+                    await client.query("COMMIT");
+                }
+                catch (error) {
+                    await client.query("ROLLBACK");
+                    throw error;
+                }
+                finally {
+                    client.release();
+                }
+                response.status(204).end();
+                return;
+            }
             const result = await db.query("DELETE FROM campaigns.entities WHERE kind=$1 AND id=$2", [kind, id]);
             if (!result.rowCount)
                 throw http(404, "Not found");
@@ -2361,7 +2390,16 @@ export function createCampaignsRouter(options = {}) {
         return new PaidDesigns(db, bridge, paidDesignScope(item.secret), request.user.id, id => bridge.execute("customerGetPaidResult", { path: { recoveryId: id } }));
     }
     router.get("/paid-designs", need("read"), need("api:use"), need("templates:manage"), wrap(async (request, response) => {
-        response.json(await (await paidStore(request)).list());
+        const item = await connection(ctx);
+        if (!item)
+            throw http(503, "Not installed");
+        const identity = { userId: request.user.id, credentialFingerprint: safeConnection(item.body, ctx.key, item.secret).credentialFingerprint };
+        // Capture the transport and identity together; never tag an old account's
+        // response using a connection refreshed while reconciliation was running.
+        const bridge = ctx.bridgeFactory(item.secret);
+        const store = new PaidDesigns(db, bridge, paidDesignScope(item.secret), request.user.id, id => bridge.execute("customerGetPaidResult", { path: { recoveryId: id } }));
+        response.setHeader("Cache-Control", "no-store");
+        response.json({ ...await store.list(), identity });
     }));
     router.post("/backup/export", mutation, need("*"), wrap(async (request, response) => {
         if ((await db.query("SELECT 1 FROM campaigns.subscriber_reconciliations LIMIT 1")).rowCount)
@@ -2479,7 +2517,9 @@ export function createCampaignsRouter(options = {}) {
                 !paidDesignOperations.has(String(row.operation)) || !["pending", "succeeded", "failed"].includes(String(row.status)) ||
                 !row.input || typeof row.input !== "object")
                 throw http(400, "Invalid paid design backup");
-            if (row.status === "succeeded" && !all.some(entity => entity.kind === "templates" && entity.value.id === row.id))
+            if (row.template_deleted_at != null && (typeof row.template_deleted_at !== "string" || !Number.isFinite(Date.parse(row.template_deleted_at))))
+                throw http(400, "Invalid paid template deletion timestamp");
+            if (row.status === "succeeded" && !row.template_deleted_at && !all.some(entity => entity.kind === "templates" && entity.value.id === row.id))
                 throw http(400, "Paid design backup is missing its saved template");
         }
         for (const item of [...rules, ...domains, ...automations])
@@ -2547,8 +2587,14 @@ export function createCampaignsRouter(options = {}) {
                 const existing = await tx.query("SELECT scope,owner_id,operation,input FROM campaigns.paid_designs WHERE id=$1", [row.id]);
                 if (existing.rows[0] && (existing.rows[0].scope !== row.scope || existing.rows[0].owner_id !== row.owner_id || existing.rows[0].operation !== row.operation))
                     throw http(409, "Paid design backup identity conflict");
-                await tx.query(`INSERT INTO campaigns.paid_designs(id,scope,owner_id,operation,input,source,status,result,error,created_at,updated_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING`, [row.id, row.scope, row.owner_id, row.operation, row.input, row.source ?? null, row.status, row.result ?? null, row.error ?? null, row.created_at, row.updated_at]);
+                await tx.query(`INSERT INTO campaigns.paid_designs(id,scope,owner_id,operation,input,source,status,result,error,created_at,updated_at,template_deleted_at)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(id) DO UPDATE
+          SET template_deleted_at=COALESCE(campaigns.paid_designs.template_deleted_at,EXCLUDED.template_deleted_at)`, [row.id, row.scope, row.owner_id, row.operation, row.input, row.source ?? null, row.status, row.result ?? null, row.error ?? null, row.created_at, row.updated_at, row.template_deleted_at ?? null]);
+            }
+            const removedTemplates = new Set((await tx.query("SELECT id FROM campaigns.paid_designs WHERE template_deleted_at IS NOT NULL")).rows.map(row => row.id));
+            if (all.some(row => row.kind === "campaigns" && removedTemplates.has(String(row.value.templateId))) ||
+                subscriptionCustomizations.some(row => removedTemplates.has(String(row.welcomeTemplateId)) || removedTemplates.has(String(row.goodbyeTemplateId)))) {
+                throw http(409, "Backup references an intentionally deleted paid template. Restore cannot resurrect it; remove those references first.");
             }
             await tx.query("DELETE FROM campaigns.entities");
             await tx.query("DELETE FROM campaigns.brands WHERE scope=$1", [scope]);
@@ -2558,12 +2604,17 @@ export function createCampaignsRouter(options = {}) {
         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [brand.id, scope, brand.name, brand.logoUrl ?? null, brand.color ?? null, brand.defaultFromName ?? null, brand.defaultFromEmail ?? null, brand.defaultReplyTo ?? null]);
             for (const row of all) {
                 const value = row.kind === "subscribers" ? { ...row.value, scope } : row.value;
+                if (row.kind === "templates" && removedTemplates.has(String(value.id)))
+                    continue;
                 if (row.kind === "subscribers")
                     value.metadata = validateCustomValues(value.metadata ?? {}, definitions);
                 await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES($1,$2,$3)", [row.kind, value.id, value]);
             }
-            for (const row of retainedPaidTemplates.rows)
+            for (const row of retainedPaidTemplates.rows) {
+                if (removedTemplates.has(row.id))
+                    continue;
                 await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES('templates',$1,$2) ON CONFLICT(kind,id) DO UPDATE SET body=EXCLUDED.body", [row.id, row.body]);
+            }
             await tx.query("DELETE FROM campaigns.audience_segments WHERE scope=$1", [scope]);
             await tx.query("DELETE FROM campaigns.audience_custom_fields WHERE scope=$1", [scope]);
             await tx.query("DELETE FROM campaigns.tokens");
