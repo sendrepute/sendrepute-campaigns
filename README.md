@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.18
+# SendRepute Campaigns 0.1.19
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,12 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.18 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.18/downloads/sendrepute-campaigns-0.1.18.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.18/downloads/sendrepute-campaigns-0.1.18.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.18/downloads/sendrepute-campaigns-0.1.18-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.19 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.19/downloads/sendrepute-campaigns-0.1.19.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.19/downloads/sendrepute-campaigns-0.1.19.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.19/downloads/sendrepute-campaigns-0.1.19-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.19
+
+- Saved Library selection lives in Campaign Design; Campaign Review now places analysis above the design preview and offers Edit current directly in the existing separate Standard/VIP hosted popup without a catalog or inline editor. Saving an edited private campaign copy preserves the original template and its canonical source.
+- Standard previews safely contain malformed CSS using a parser in the browser-only preview path, without rewriting stored or exported email. Actual demo templates retain canonical Standard and native VIP sources; the VIP edit return retains its access identity. Three real UI illustrations are bundled in the English and Arabic in-app documentation.
 
 ### Changes in 0.1.18
 
