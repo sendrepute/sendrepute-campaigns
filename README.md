@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.19
+# SendRepute Campaigns 0.1.20
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.19 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.19/downloads/sendrepute-campaigns-0.1.19.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.19/downloads/sendrepute-campaigns-0.1.19.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.19/downloads/sendrepute-campaigns-0.1.19-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.20 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.20/downloads/sendrepute-campaigns-0.1.20.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.20/downloads/sendrepute-campaigns-0.1.20.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.20/downloads/sendrepute-campaigns-0.1.20-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.20
+
+- The interactive demo now explicitly marks AI generation, classification and insights unavailable (HTTP 403), rather than simulating hosted AI results. Production hosted AI operations and their paid-consent safeguards are unchanged.
+- The 20 Standard and 20 VIP demo catalog designs use authored, source-based thumbnails and matching detail previews. Ordinary template edits compile locally from canonical source. In-app documentation is updated; development/test caches remain separate from production behavior.
+- This frontend-only patch retains the compiled server, delivery, bridge, SDK and installation configuration byte-for-byte from 0.1.19. No Cloudflare redeployment or npm SDK release is required.
 
 ### Changes in 0.1.19
 
