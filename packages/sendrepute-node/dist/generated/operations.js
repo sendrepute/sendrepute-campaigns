@@ -17,6 +17,7 @@ export const operationMetadata = {
     customerGetActiveDepositOffer: { method: "GET", path: "/v1/payments/deposit-offer" },
     customerGetCreditLedger: { method: "GET", path: "/v1/account/ledger" },
     customerGetEmailBuilderAccess: { method: "GET", path: "/v1/email-builder/access/{accessId}" },
+    customerGetPaidResult: { method: "GET", path: "/customer/paid-results/{recoveryId}" },
     customerGetPricingSettings: { method: "GET", path: "/v1/pricing" },
     customerGetStandardBuilderTemplate: { method: "GET", path: "/v1/email-builder/templates/{templateId}" },
     customerGetVip: { method: "GET", path: "/v1/vip" },

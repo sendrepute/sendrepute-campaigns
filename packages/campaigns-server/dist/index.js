@@ -7,6 +7,7 @@ import express, { Router } from "express";
 import { Pool } from "pg";
 import { PRODUCTION_API_BASE_URL, PRODUCTION_HOSTED_BUILDER_ORIGIN, SendReputeClient, assertHostedBuilderLaunch, operationCapabilities, } from "@workspace/campaigns-bridge";
 import { createExperimentsRouter } from "./experiments.js";
+import { PaidDesigns, paidDesignOperations, paidDesignScope } from "./paid-designs.js";
 import { parseSesSnsWebhook, parseTokenWebhook, sendMessage, verifyProvider, } from "@workspace/campaigns-delivery";
 import { appendDeliveryEvent, createDeliveryReliabilityRouter, refreshCampaignDeliveryStatistics, } from "./delivery-reliability.js";
 import { createTelegramNotificationsRouter, enqueueCampaignNotification, runTelegramNotificationWorker, sendTelegramMessage, } from "./telegram-notifications.js";
@@ -373,7 +374,8 @@ function validateTemplate(value) {
         throw http(400, "Template name must be between 1 and 160 characters");
     if (typeof value.subject !== "string" || value.subject.length < 1 || value.subject.length > 255)
         throw http(400, "Template subject must be between 1 and 255 characters");
-    if (typeof value.html !== "string" || value.html.length < 1)
+    const canonical = value.metadata;
+    if (typeof value.html !== "string" || (value.html.length < 1 && !(canonical?.paidDesignId && canonical.compilePending === true && (typeof canonical.mjml === "string" || canonical.hostedDocument))))
         throw http(400, "Template HTML is required");
     if (typeof value.text !== "string")
         throw http(400, "Template text must be a string");
@@ -1502,6 +1504,24 @@ export function createCampaignsRouter(options = {}) {
         await audit(ctx, request, "subscriber.batch_delete", "subscribers", null, { deleted: subscriberIds.length, cancelledJobs });
         response.json({ data: { deleted: subscriberIds.length, cancelledJobs } });
     }));
+    router.use("/templates/:templateId", async (request, _response, next) => {
+        if (request.query.demo === "true")
+            return next();
+        if (!request.user)
+            throw http(401, "Authentication required");
+        const id = String(request.params.templateId);
+        if (!ENTITY_UUID.test(id))
+            throw http(400, "Invalid template ID");
+        const paid = await db.query("SELECT scope,owner_id FROM campaigns.paid_designs WHERE id=$1", [id]);
+        if (paid.rows[0]) {
+            const item = await connection(ctx);
+            if (!item || paid.rows[0].scope !== paidDesignScope(item.secret) || paid.rows[0].owner_id !== request.user.id)
+                throw http(404, "Template not found");
+            if (request.method === "GET" && permitted(request, "api:use") && permitted(request, "templates:manage"))
+                await (await paidStore(request)).list(id);
+        }
+        next();
+    });
     for (const kind of KINDS) {
         const singular = kind === "campaigns" ? "campaign" : kind.slice(0, -1);
         const manage = `${kind}:manage`;
@@ -1532,6 +1552,14 @@ export function createCampaignsRouter(options = {}) {
             const clauses = ["kind=$1"];
             const filterArgs = [];
             const add = (value) => { filterArgs.push(value); return 3 + filterArgs.length; };
+            if (kind === "templates") {
+                if (permitted(request, "api:use") && permitted(request, "templates:manage"))
+                    await (await paidStore(request)).list();
+                const item = await connection(ctx);
+                const scopeAt = add(item ? paidDesignScope(item.secret) : "");
+                const ownerAt = add(request.user.id);
+                clauses.push(`NOT EXISTS (SELECT 1 FROM campaigns.paid_designs pd WHERE pd.id=campaigns.entities.id AND (pd.scope<>$${scopeAt} OR pd.owner_id<>$${ownerAt}))`);
+            }
             if (listId)
                 clauses.push(`body->'listIds' ? $${add(listId)}`);
             if (allowed && scopedKind) {
@@ -2292,6 +2320,10 @@ export function createCampaignsRouter(options = {}) {
         const body = json(request.body);
         fields(body, ["operation", "input", "paidConsent"], ["operation", "input", "paidConsent"]);
         const operation = String(body.operation);
+        // Recovery must go through local intent ownership checks. The bridge's
+        // transport operation is internal, not an account-wide result oracle.
+        if (operation === "customerGetPaidResult")
+            throw http(403, "Use the account- and owner-scoped /paid-designs recovery endpoint");
         const capability = operationCapabilities[operation];
         if (!capability)
             throw http(400, "Unsupported SendRepute operation");
@@ -2305,7 +2337,11 @@ export function createCampaignsRouter(options = {}) {
             const item = await connection(ctx);
             if (!item)
                 throw http(503, "Not installed");
-            const result = await ctx.bridgeFactory(item.secret).execute(operation, body.input);
+            if (paidDesignOperations.has(operation) && !permitted(request, "templates:manage"))
+                throw http(403, "Template management permission is required");
+            const result = paidDesignOperations.has(operation)
+                ? await (await paidStore(request)).purchase(operation, body.input)
+                : await ctx.bridgeFactory(item.secret).execute(operation, body.input);
             await audit(ctx, request, "sendrepute.execute", "connection", null, { operation, outcome: "success", durationMs: Date.now() - startedAt });
             response.json({ data: { operation, result, charged: capability.billable } });
         }
@@ -2316,6 +2352,16 @@ export function createCampaignsRouter(options = {}) {
             });
             throw error;
         }
+    }));
+    async function paidStore(request) {
+        const item = await connection(ctx);
+        if (!item || !request.user)
+            throw http(401, "Authenticated connection required");
+        const bridge = ctx.bridgeFactory(item.secret);
+        return new PaidDesigns(db, bridge, paidDesignScope(item.secret), request.user.id, id => bridge.execute("customerGetPaidResult", { path: { recoveryId: id } }));
+    }
+    router.get("/paid-designs", need("read"), need("api:use"), need("templates:manage"), wrap(async (request, response) => {
+        response.json(await (await paidStore(request)).list());
     }));
     router.post("/backup/export", mutation, need("*"), wrap(async (request, response) => {
         if ((await db.query("SELECT 1 FROM campaigns.subscriber_reconciliations LIMIT 1")).rowCount)
@@ -2348,6 +2394,7 @@ export function createCampaignsRouter(options = {}) {
         // Deliberate backup allowlist: insight snapshots/results and replay IDs are
         // short-lived operational data, never exportable/restorable payloads.
         const data = {
+            paidDesigns: (await db.query("SELECT * FROM campaigns.paid_designs ORDER BY created_at,id")).rows,
             settings: currentSettings, housekeepingSettings: currentSettings.housekeeping ?? {}, brands: brands.rows,
             rules: rules.rows.map(row => ({ ...row, ...(row.actionType === "webhook" ? { requiresSecretReentry: true } : {}) })),
             subscriptionCustomizations: subscriptionCustomizations.rows, domains: domains.rows,
@@ -2367,7 +2414,7 @@ export function createCampaignsRouter(options = {}) {
         if (backup.format !== "sendrepute-campaigns-backup" || (backup.version !== 2 && backup.version !== 3))
             throw http(400, "Unsupported backup format; supported versions are 2 and 3");
         const data = json(backup.data);
-        fields(data, [...KINDS, "settings", "housekeepingSettings", "brands", "rules", "subscriptionCustomizations", "domains", "automations", "providerAnalytics", "roles", "audience"]);
+        fields(data, [...KINDS, "settings", "housekeepingSettings", "brands", "rules", "subscriptionCustomizations", "domains", "automations", "providerAnalytics", "roles", "audience", "paidDesigns"]);
         const all = KINDS.flatMap(kind => {
             const values = data[kind];
             if (!Array.isArray(values) || values.length > 100_000)
@@ -2426,6 +2473,15 @@ export function createCampaignsRouter(options = {}) {
         const domains = backupCollection("domains");
         const automations = backupCollection("automations");
         const providerAnalytics = backupCollection("providerAnalytics");
+        const paidDesigns = backupCollection("paidDesigns", 100_000);
+        for (const row of paidDesigns) {
+            if (!ENTITY_UUID.test(String(row.id)) || !/^[a-f0-9]{64}$/.test(String(row.scope)) || !ENTITY_UUID.test(String(row.owner_id)) ||
+                !paidDesignOperations.has(String(row.operation)) || !["pending", "succeeded", "failed"].includes(String(row.status)) ||
+                !row.input || typeof row.input !== "object")
+                throw http(400, "Invalid paid design backup");
+            if (row.status === "succeeded" && !all.some(entity => entity.kind === "templates" && entity.value.id === row.id))
+                throw http(400, "Paid design backup is missing its saved template");
+        }
         for (const item of [...rules, ...domains, ...automations])
             if (!ENTITY_UUID.test(String(item.id)))
                 throw http(400, "Backup configuration has an invalid ID");
@@ -2484,6 +2540,16 @@ export function createCampaignsRouter(options = {}) {
             // A restored campaign must not inherit pre-restore quotes, aggregates or
             // results. Backups cannot resurrect these retention-limited records.
             await tx.query("DELETE FROM campaigns.insight_requests");
+            const retainedPaidTemplates = await tx.query("SELECT e.id,e.body FROM campaigns.entities e JOIN campaigns.paid_designs p ON p.id=e.id WHERE e.kind='templates'");
+            // Merge durable intents, never erase an unresolved debit or re-scope it
+            // to the restore administrator/current central connection.
+            for (const row of paidDesigns) {
+                const existing = await tx.query("SELECT scope,owner_id,operation,input FROM campaigns.paid_designs WHERE id=$1", [row.id]);
+                if (existing.rows[0] && (existing.rows[0].scope !== row.scope || existing.rows[0].owner_id !== row.owner_id || existing.rows[0].operation !== row.operation))
+                    throw http(409, "Paid design backup identity conflict");
+                await tx.query(`INSERT INTO campaigns.paid_designs(id,scope,owner_id,operation,input,source,status,result,error,created_at,updated_at)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING`, [row.id, row.scope, row.owner_id, row.operation, row.input, row.source ?? null, row.status, row.result ?? null, row.error ?? null, row.created_at, row.updated_at]);
+            }
             await tx.query("DELETE FROM campaigns.entities");
             await tx.query("DELETE FROM campaigns.brands WHERE scope=$1", [scope]);
             for (const brand of brands)
@@ -2496,6 +2562,8 @@ export function createCampaignsRouter(options = {}) {
                     value.metadata = validateCustomValues(value.metadata ?? {}, definitions);
                 await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES($1,$2,$3)", [row.kind, value.id, value]);
             }
+            for (const row of retainedPaidTemplates.rows)
+                await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES('templates',$1,$2) ON CONFLICT(kind,id) DO UPDATE SET body=EXCLUDED.body", [row.id, row.body]);
             await tx.query("DELETE FROM campaigns.audience_segments WHERE scope=$1", [scope]);
             await tx.query("DELETE FROM campaigns.audience_custom_fields WHERE scope=$1", [scope]);
             await tx.query("DELETE FROM campaigns.tokens");

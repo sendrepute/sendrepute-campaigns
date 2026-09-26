@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.21
+# SendRepute Campaigns 0.1.22
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.21 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.21/downloads/sendrepute-campaigns-0.1.21.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.21/downloads/sendrepute-campaigns-0.1.21.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.21/downloads/sendrepute-campaigns-0.1.21-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.22 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.22/downloads/sendrepute-campaigns-0.1.22.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.22/downloads/sendrepute-campaigns-0.1.22.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.22/downloads/sendrepute-campaigns-0.1.22-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.22
+
+- A paid design intent can recover an already-owned result using its recovery ID via the updated bundled bridge and customer SDK. The self-hosted server saves canonical Standard MJML or native VIP source and derives a safe local preview for a saved design; the VIP editor return retains its access identity. Recovery does not request a second generation. Actual paid operations still require their existing consent and entitlement; this release does not include private hosted-editor source.
+- PostgreSQL migration 027 adds durable `paid_designs` intent/result storage. The compiled server includes the adjacent, self-contained `paid-design-compiler-worker.cjs` for local MJML/native preview compilation; it is bundled with runtime code rather than requiring the development build toolchain or paid API to compile. The frontend, server, bridge and bundled SDK change; delivery and installation configuration are unchanged.
+- **Upgrade:** back up PostgreSQL, application data/encryption key and private `.env` before stopping the prior release. Server startup applies migration 027 using the existing migration path. Preserve the same Compose project and volumes; check migrations and health before resuming schedules. Rolling back can require restoring the matching pre-upgrade database and data directory. The customer recovery operation requires a compatible live central service; this self-hosted archive does not contain that service.
 
 ### Changes in 0.1.21
 

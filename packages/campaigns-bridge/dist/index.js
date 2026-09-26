@@ -43,6 +43,7 @@ export const operationCapabilities = {
     customerRewriteFlaggedTermsWithAi: { method: "POST", path: "/v1/rewrite", scope: "rewrite", billable: true, consent: "rewriteQuote" },
     customerQuoteAiRewrite: { method: "POST", path: "/v1/rewrite/ai-quote", scope: "rewrite", billable: false },
     customerCreateAiEmailTemplate: { method: "POST", path: "/v1/email-builder/ai-template", scope: "ai:generate", billable: true, consent: "expectedPrice" },
+    customerGetPaidResult: { method: "GET", path: "/customer/paid-results/{recoveryId}", scope: "builder:read", billable: false },
     customerCreateVipEmailTemplate: { method: "POST", path: "/v1/vip/email-template", scope: "ai:generate", billable: true, consent: "expectedPrice" },
     customerAccessEmailBuilder: { method: "POST", path: "/v1/email-builder/access", scope: "builder:write", billable: false },
     customerGetEmailBuilderAccess: { method: "GET", path: "/v1/email-builder/access/{accessId}", scope: "builder:read", billable: false },
@@ -419,6 +420,13 @@ export class SendReputeClient {
             throw new CampaignsBridgeError("REQUEST_FAILED", "SendRepute request failed", { status: 502 });
         }
     }
+    /** Authenticated read-only recovery through the same pinned SDK transport. */
+    async getPaidResult(recoveryId) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recoveryId)) {
+            throw new CampaignsBridgeError("INVALID_RECOVERY_ID", "Recovery identity must be a UUID", { status: 400 });
+        }
+        return this.#request("customerGetPaidResult", { path: { recoveryId } });
+    }
     async #request(operation, input) {
         const centralInput = centralOperationInput(operation, input ?? {});
         assertBoundedRequest(centralInput);
@@ -433,14 +441,21 @@ export class SendReputeClient {
         }
         catch (error) {
             if (error instanceof SendReputeError) {
+                // SDK errors can originate from an untrusted HTTP response. Preserve
+                // only bounded public identifiers; never interpolate provider text into
+                // a Campaigns-visible code or message.
+                const code = /^[A-Z][A-Z0-9_.-]{0,63}$/.test(error.code) ? error.code : "API_ERROR";
+                const requestId = typeof error.requestId === "string" &&
+                    error.requestId.length <= 128 && /^[A-Za-z0-9_.:-]+$/.test(error.requestId)
+                    ? error.requestId : undefined;
                 const status = error.status ??
                     (error.code === "REQUEST_TIMEOUT" ? 504
                         : error.code === "NETWORK_ERROR" || error.code === "INVALID_RESPONSE" || error.code === "RESPONSE_TOO_LARGE"
                             ? 502
                             : undefined);
-                throw new CampaignsBridgeError(error.code, error.code === "REQUEST_TIMEOUT"
+                throw new CampaignsBridgeError(code, error.code === "REQUEST_TIMEOUT"
                     ? "SendRepute request timed out; its billing outcome may be unknown"
-                    : `SendRepute request failed${error.status === undefined ? "" : ` with status ${error.status}`} (${error.code})`, { status, requestId: error.requestId, ...(error.retryAfterMs !== undefined ? { retryAfterSeconds: Math.ceil(error.retryAfterMs / 1000) } : {}) });
+                    : `SendRepute request failed${error.status === undefined ? "" : ` with status ${error.status}`} (${code})`, { status, ...(requestId ? { requestId } : {}), ...(error.retryAfterMs !== undefined ? { retryAfterSeconds: Math.ceil(error.retryAfterMs / 1000) } : {}) });
             }
             throw new CampaignsBridgeError("REQUEST_FAILED", "SendRepute request failed", { status: 502 });
         }

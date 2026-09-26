@@ -152,6 +152,12 @@ export declare const operationCapabilities: {
         readonly billable: true;
         readonly consent: "expectedPrice";
     };
+    readonly customerGetPaidResult: {
+        readonly method: "GET";
+        readonly path: "/customer/paid-results/{recoveryId}";
+        readonly scope: "builder:read";
+        readonly billable: false;
+    };
     readonly customerCreateVipEmailTemplate: {
         readonly method: "POST";
         readonly path: "/v1/vip/email-template";
@@ -435,6 +441,8 @@ export declare class SendReputeClient {
         state: string;
         expiresAt: string;
     }>;
+    /** Authenticated read-only recovery through the same pinned SDK transport. */
+    getPaidResult(recoveryId: string): Promise<OperationResponse<"customerGetPaidResult">>;
     /**
      * Free activation check. These GETs neither require a positive wallet balance
      * nor invoke classification, AI, email delivery, or a purchase.

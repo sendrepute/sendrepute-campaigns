@@ -149,6 +149,7 @@ export type CustomerAiEmailTemplateInput = {
     content?: string;
     category?: "newsletter" | "transactional" | "personal" | "business" | "custom";
     subtype?: "weekly-digest" | "product-update" | "promotion" | "event-invitation" | "order-confirmation" | "shipping-update" | "payment-receipt" | "password-reset" | "account-alert" | "invitation" | "thank-you" | "congratulations" | "personal-update" | "introduction" | "announcement" | "follow-up" | "meeting-invitation" | "custom";
+    recoveryId?: string;
 };
 export type CustomerAiRewriteInput = {
     parentRequestId: string;
@@ -597,6 +598,7 @@ export type CustomerVipEmailTemplateInput = {
     prompt: string;
     expectedPriceMillicents: number;
     imageUrls?: Array<string>;
+    recoveryId?: string;
 };
 export type CustomerVipEmailTemplateResult = {
     document: CustomerNativeDocument;
@@ -928,6 +930,23 @@ export interface OperationMap {
             };
         };
         response: EmailBuilderActiveAccess;
+    };
+    customerGetPaidResult: {
+        input: {
+            path: {
+                recoveryId: string;
+            };
+        };
+        response: {
+            status: "pending" | "succeeded" | "failed";
+            operation: "customerStandardAiGenerate" | "customerVipAiGenerate";
+            result?: {
+                [key: string]: unknown;
+            };
+            error?: {
+                [key: string]: unknown;
+            };
+        };
     };
     customerGetPricingSettings: {
         input: Record<string, never>;

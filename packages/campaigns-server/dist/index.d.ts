@@ -13,6 +13,7 @@ type Db = {
 /** Independent of delivery/activation: an idle installation must still erase expired payloads. */
 export declare function cleanupCampaignInsightRetention(db: Db, now?: Date): Promise<void>;
 type Bridge = {
+    getPaidResult?(id: string): Promise<unknown>;
     campaignInsightsQuote?: SendReputeClient["campaignInsightsQuote"];
     campaignInsightsAnalyze?: SendReputeClient["campaignInsightsAnalyze"];
     validateActivation(): Promise<unknown>;
