@@ -2340,7 +2340,7 @@ export function createCampaignsRouter(options = {}) {
         goodbye_enabled "goodbyeEnabled",goodbye_template_id "goodbyeTemplateId",goodbye_provider_id "goodbyeProviderId"
         FROM campaigns.subscription_customizations ORDER BY list_id`),
             db.query(`SELECT id,hostname,base_path "basePath" FROM campaigns.custom_domains ORDER BY created_at,id`),
-            db.query(`SELECT id,body,status FROM campaigns.automations ORDER BY created_at,id`),
+            db.query(`SELECT id,body,status,archived_at "archivedAt" FROM campaigns.automations ORDER BY created_at,id`),
             db.query(`SELECT provider_id "providerId",enabled,track_opens "trackOpens",track_clicks "trackClicks",
         webhook_configured "webhookConfigured" FROM campaigns.provider_analytics_state ORDER BY provider_id`),
         ]);
@@ -2527,9 +2527,17 @@ export function createCampaignsRouter(options = {}) {
             await tx.query("DELETE FROM campaigns.custom_domains");
             for (const domain of domains)
                 await tx.query("INSERT INTO campaigns.custom_domains(id,hostname,base_path,challenge,verified_at,last_checked_at,last_error) VALUES($1,$2,$3,$4,NULL,NULL,'Reverification required after restore')", [domain.id, String(domain.hostname), String(domain.basePath ?? "/"), randomBytes(24).toString("base64url")]);
-            for (const automation of automations)
-                await tx.query(`INSERT INTO campaigns.automations(id,body,status) VALUES($1,$2,'paused')
-         ON CONFLICT(id) DO UPDATE SET body=excluded.body,status='paused',updated_at=now()`, [automation.id, json(automation.body)]);
+            for (const automation of automations) {
+                const archivedAt = automation.archivedAt ?? null;
+                if (archivedAt !== null && (typeof archivedAt !== "string" || !Number.isFinite(Date.parse(archivedAt))))
+                    throw http(400, "Invalid archived automation timestamp");
+                await tx.query(`INSERT INTO campaigns.automations(id,body,status,archived_at)
+           VALUES($1,$2,CASE WHEN $3::timestamptz IS NULL THEN 'paused' ELSE 'cancelled' END,$3::timestamptz)
+           ON CONFLICT(id) DO UPDATE SET body=excluded.body,
+             archived_at=coalesce(campaigns.automations.archived_at,excluded.archived_at),
+             status=CASE WHEN coalesce(campaigns.automations.archived_at,excluded.archived_at) IS NULL THEN 'paused' ELSE 'cancelled' END,
+             updated_at=now()`, [automation.id, json(automation.body), archivedAt]);
+            }
             await tx.query("DELETE FROM campaigns.provider_analytics_state");
             for (const state of providerAnalytics)
                 await tx.query(`INSERT INTO campaigns.provider_analytics_state

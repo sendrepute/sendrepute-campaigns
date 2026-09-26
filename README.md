@@ -1,4 +1,4 @@
-# SendRepute Campaigns 0.1.20
+# SendRepute Campaigns 0.1.21
 
 Self-hosted campaign and subscriber management. **This repository distributes a runnable compiled release, not the full source monorepo.** It includes the Campaigns browser build, server, delivery and customer-API bridge runtimes, a private bundled copy of the compiled public SendRepute customer SDK, database migrations, and operational documentation. It does **not** include the main SendRepute website, central scanner/API implementation, database contents, credentials, or a hosted-service license. Component manifests identify their respective license declarations; third-party dependencies and assets retain their own terms. Do not infer a blanket license for the hosted service or third-party assets.
 
@@ -8,7 +8,13 @@ Self-hosted campaign and subscriber management. **This repository distributes a 
 
 ## Download and install
 
-Download the [v0.1.20 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.20/downloads/sendrepute-campaigns-0.1.20.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.20/downloads/sendrepute-campaigns-0.1.20.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.20/downloads/sendrepute-campaigns-0.1.20-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+Download the [v0.1.21 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.21/downloads/sendrepute-campaigns-0.1.21.zip) or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.21/downloads/sendrepute-campaigns-0.1.21.tar.gz) and verify it against the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.21/downloads/sendrepute-campaigns-0.1.21-SHA256SUMS). These files are versioned **repository downloads**, not GitHub Release binary assets. Alternatively, GitHub's **Code → Download ZIP** is a repository snapshot, not the checksummed runtime release archive. Do not use a ZIP containing a different version without checking its contents.
+
+### Changes in 0.1.21
+
+- Automation Delete now uses a localized, named confirmation and a **soft archive** for all statuses. The server's new PostgreSQL migration 026 adds `archived_at`; archived automations disappear from lists and direct mutation endpoints return 404. Under the shared delivery lock, queued work is cancelled while in-progress sending/unknown delivery history remains available for reconciliation. Repeated deletion is idempotent; restoring an older application backup does not resurrect an archived automation.
+- The interactive demo blocks every hosted builder entry point, including fixtures, with an unavailable message rather than opening a popup or simulating AI. Production hosted AI and paid operations are unchanged.
+- **Upgrade requires a database migration.** Back up PostgreSQL and the application data/encryption key **before upgrading**. The existing server startup migration path applies migration 026; do not run the old and new application versions against the same database. Restoring to the previous application version can require restoring the matching pre-upgrade database and data directory. The compiled Campaigns server and migrations change in this release; delivery, bridge, public SDK and installation configuration do not.
 
 ### Changes in 0.1.20
 
@@ -118,7 +124,7 @@ Download the [v0.1.20 ZIP](https://github.com/sendrepute/sendrepute-campaigns/ra
 
 Back up PostgreSQL, application data/encryption key and your private `.env` first. Verify the archive checksum and extract into a **new directory**. Stop the old Campaigns service before starting the new one; do not run both against the same database. Copy your existing `.env` without regenerating it, and retain the same Compose project name (default `sendrepute-campaigns`) and existing `campaigns-postgres` / `campaigns-data` volumes. Preserve any custom Compose overrides and bind-mount paths. Never use `docker compose down -v`.
 
-From the new directory run `docker compose up -d --build` with the same project/override options as the old installation. For non-Docker installations, keep the existing database URL, configuration, data directory and encryption key, install with `npm ci --omit=dev --ignore-scripts`, then restart your existing service against the new runtime. Hard-refresh the browser after upgrade. See [operations](docs/operations.md) for backup and rollback requirements. This patch requires no new npm SDK version and no Cloudflare deployment.
+From the new directory run `docker compose up -d --build` with the same project/override options as the old installation. For non-Docker installations, keep the existing database URL, configuration, data directory and encryption key, install with `npm ci --omit=dev --ignore-scripts`, then restart your existing service against the new runtime. Server startup runs the included migration 026 automatically; confirm migration and health before resuming schedules. Hard-refresh the browser after upgrade. See [operations](docs/operations.md) for backup and rollback requirements. This patch requires no new npm SDK version and no Cloudflare deployment.
 
 Requirements: Linux x64/ARM64 with Docker Engine + Compose v2 (Windows users: Docker Desktop/WSL2); or Node.js 22+ and PostgreSQL for a non-Docker installation. Native Windows archive installation is unverified. Use persistent database and application volumes, a public HTTPS reverse proxy and DNS for production delivery, and outbound access to your chosen SMTP relay/provider. [Full installation instructions](docs/install.md).
 

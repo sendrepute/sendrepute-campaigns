@@ -117,11 +117,11 @@ function publicRun(row) {
 export function createAutomationsRouter(options) {
     const { db, mutation, need, wrap, assertListsAllowed, restrictedLists } = options;
     const router = Router();
-    const get = async (tx, req) => {
+    const get = async (tx, req, includeArchived = false) => {
         if (!uuid(req.params.id))
             throw fail(400, "Invalid automation ID");
         const row = (await tx.query("SELECT * FROM campaigns.automations WHERE id=$1", [req.params.id])).rows[0];
-        if (!row)
+        if (!row || (!includeArchived && row.archived_at))
             throw fail(404, "Automation not found");
         assertListsAllowed(req, row.body.listIds);
         return row;
@@ -223,7 +223,7 @@ export function createAutomationsRouter(options) {
         if (search.length > 200)
             throw fail(400, "Search must not exceed 200 characters");
         const args = [allowed === null ? null : JSON.stringify(allowed), search ? `%${search}%` : null, p.pageSize, p.offset];
-        const where = "($1::jsonb IS NULL OR body->'listIds' <@ $1::jsonb) AND ($2::text IS NULL OR lower(body->>'name') LIKE $2)";
+        const where = "archived_at IS NULL AND ($1::jsonb IS NULL OR body->'listIds' <@ $1::jsonb) AND ($2::text IS NULL OR lower(body->>'name') LIKE $2)";
         const rows = await db.query(`SELECT * FROM campaigns.automations WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4`, args);
         const count = await db.query(`SELECT count(*)::text count FROM campaigns.automations WHERE ${where}`, args.slice(0, 2));
         res.json({ data: rows.rows.map(publicDefinition), meta: { page: p.page, pageSize: p.pageSize, total: Number(count.rows[0]?.count ?? 0) } });
@@ -279,13 +279,18 @@ export function createAutomationsRouter(options) {
             res.json({ data: publicDefinition(result) });
         }));
     router.delete("/automations/:id", mutation, need("campaigns:manage"), wrap(async (req, res) => {
-        await automationTransaction(db, async (tx) => {
-            const row = await get(tx, req);
-            if (row.status !== "draft" || (await tx.query("SELECT 1 FROM campaigns.automation_runs WHERE automation_id=$1", [row.id])).rowCount)
-                throw fail(409, "Only unused drafts can be deleted; cancel to retain history");
-            await tx.query("DELETE FROM campaigns.automations WHERE id=$1", [row.id]);
+        const archived = await automationTransaction(db, async (tx) => {
+            const row = await get(tx, req, true);
+            if (row.archived_at)
+                return false;
+            await tx.query("UPDATE campaigns.jobs SET state='cancelled',revision=revision+1,updated_at=now() WHERE state='queued' AND automation_run_id IN (SELECT id FROM campaigns.automation_runs WHERE automation_id=$1)", [row.id]);
+            await tx.query("UPDATE campaigns.automation_runs SET state='cancelled',updated_at=now() WHERE automation_id=$1 AND state='running'", [row.id]);
+            await tx.query("UPDATE campaigns.automations SET status='cancelled',archived_at=now(),updated_at=now() WHERE id=$1", [row.id]);
+            const actor = req.user ? { id: req.user.id, name: req.user.name, email: req.user.email, roleIds: req.user.roleIds } : null;
+            await tx.query("INSERT INTO campaigns.audit(id,action,entity_type,entity_id,actor_id,actor,ip_address,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", [randomUUID(), "automation.archived", "automation", row.id, req.user?.id ?? null, actor, req.ip ?? null, { outcome: "completed" }]);
+            return true;
         });
-        res.json({ data: { ok: true } });
+        res.json({ data: { ok: true, archived } });
     }));
     router.post("/automation-events", mutation, need("campaigns:send"), wrap(async (req, res) => {
         const input = req.body;
@@ -305,7 +310,7 @@ export function createAutomationsRouter(options) {
         res.status(result.duplicate ? 200 : 201).json({ data: result });
     }));
     router.get("/automations/:id/runs", need("read"), wrap(async (req, res) => {
-        await get(db, req);
+        await get(db, req, true);
         const allowed = restrictedLists(req);
         const p = pagination(req);
         const args = [req.params.id, allowed === null ? null : JSON.stringify(allowed), p.pageSize, p.offset];
