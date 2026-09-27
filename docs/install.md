@@ -19,9 +19,9 @@ Load-test your workload and monitor it before increasing send volume.
 
 ## Docker Compose quickstart
 
-Download the [v0.1.1 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.1/downloads/sendrepute-campaigns-0.1.1.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.1/downloads/sendrepute-campaigns-0.1.1.tar.gz)
-and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.1/downloads/sendrepute-campaigns-0.1.1-SHA256SUMS).
+Download the [v0.1.24 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.24/downloads/sendrepute-campaigns-0.1.24.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.24/downloads/sendrepute-campaigns-0.1.24.tar.gz)
+and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.24/downloads/sendrepute-campaigns-0.1.24-SHA256SUMS).
 These are repository downloads, not GitHub Release binary assets. GitHub's
 **Code → Download ZIP** provides a repository snapshot rather than the
 checksummed runtime release archive. Do not pipe a remote script into a shell.
