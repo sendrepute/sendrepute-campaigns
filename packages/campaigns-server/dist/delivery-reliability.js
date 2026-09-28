@@ -21,7 +21,7 @@ export async function refreshCampaignDeliveryStatistics(db, campaignId) {
        count(DISTINCT job_id) FILTER (WHERE event_type='provider_bounced')::text bounced,
        count(DISTINCT job_id) FILTER (WHERE event_type='provider_soft_bounced')::text soft_bounced,
        count(DISTINCT job_id) FILTER (WHERE event_type='provider_complained')::text complaints,
-       count(DISTINCT job_id) FILTER (WHERE event_type='provider_unsubscribed')::text unsubscribed
+       count(DISTINCT job_id) FILTER (WHERE event_type IN ('provider_unsubscribed','first_party_unsubscribed'))::text unsubscribed
      FROM campaigns.delivery_events de
      WHERE campaign_id=$1
        AND EXISTS (SELECT 1 FROM campaigns.jobs j WHERE j.id=de.job_id AND j.kind='campaign')`, [campaignId]);

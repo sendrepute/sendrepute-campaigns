@@ -41,9 +41,9 @@ never force-reset private settings or delete volumes.
 
 Alternatively, use a versioned release archive:
 
-Download the [v0.1.27 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.27/downloads/sendrepute-campaigns-0.1.27.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.27/downloads/sendrepute-campaigns-0.1.27.tar.gz)
-and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.27/downloads/sendrepute-campaigns-0.1.27-SHA256SUMS).
+Download the [v0.1.28 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.28/downloads/sendrepute-campaigns-0.1.28.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.28/downloads/sendrepute-campaigns-0.1.28.tar.gz)
+and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.28/downloads/sendrepute-campaigns-0.1.28-SHA256SUMS).
 These are repository downloads, not GitHub Release binary assets. GitHub's
 **Code → Download ZIP** provides a repository snapshot rather than the
 checksummed runtime release archive. Do not pipe a remote script into a shell.
@@ -493,6 +493,32 @@ verification tests TLS/reachability/authentication **without sending mail**;
 it cannot verify public IP reputation, DNS alignment, recipient delivery or
 bounce processing. Do not send production campaigns until those checks are
 independently complete.
+
+### Campaign sending threads and unsubscribe reporting (v0.1.28)
+
+In the campaign editor, **Threads (simultaneous sends)** controls concurrent
+requests for that campaign: select **1–10**, with **1** as the default. Change
+this only while the campaign is a draft; queued/sent campaign snapshots cannot
+be edited. The worker also caps total concurrent jobs at 10, and the existing
+per-provider rate limiter still applies across campaigns. More threads do not
+override your provider's limits or guarantee faster delivery or inbox placement.
+Increase cautiously and monitor provider responses, queue outcomes and
+suppression behavior. The new campaign control is available in the UI's 13
+non-English locales; AI-assisted (Gemini) translations should be reviewed if
+you rely on localized text for operational decisions.
+
+Campaign unsubscribe links minted during dispatch now retain the accepted
+delivery job's identity. A successful first-party opt-out records one
+`first_party_unsubscribed` event for that job; campaign and overview reports
+count distinct jobs across provider and first-party unsubscribe signals, so
+the same job is not counted twice. **Previously issued, unlinked unsubscribe
+links still opt recipients out but cannot be attributed retroactively** to a
+campaign. Administrative/list-level opt-outs are not manufactured as campaign
+events; provider-only analytics is unchanged. Upgrade migrations run on
+startup: migration **032** adds token/job attribution and a unique event
+index, while the updated **016** housekeeping event constraint retains
+`first_party_unsubscribed` coverage. Do not rewrite old tokens or manually
+backfill attribution; back up your database before upgrading.
 
 ### Troubleshooting your domain and mail host
 

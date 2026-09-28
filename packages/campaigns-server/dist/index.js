@@ -660,6 +660,8 @@ function statusData(isInstalled, request, activated) {
     return { installed: isInstalled, activated, demo: !isInstalled, version: VERSION, user: request.user ? { id: request.user.id, name: request.user.name, email: request.user.email, roleIds: request.user.roleIds, permissions: request.user.permissions, ...(Array.isArray(request.user.listIds) ? { listIds: request.user.listIds } : {}) } : null, csrfToken: request.user ? request.csrfToken ?? null : null };
 }
 function publicEntity(kind, body) {
+    if (kind === "campaigns")
+        return { ...body, sendConcurrency: body.sendConcurrency ?? 1 };
     if (kind === "providers") {
         const { secret: _secret, ...result } = body;
         return JSON.parse(JSON.stringify(result, (key, value) => /password|secret|webhook.?token|api.?key/i.test(key) ? undefined : value));
@@ -918,13 +920,16 @@ function normalize(kind, input, existing) {
         return { ...base, ...input, email: input.email === undefined ? existing?.email : email(input.email), status: input.status ?? existing?.status ?? "subscribed", listIds: input.listIds ?? existing?.listIds, tags: input.tags === undefined ? existing?.tags ?? [] : subscriberTags(input.tags), confirmedAt: existing?.confirmedAt ?? (input.status === "pending" ? null : now), unsubscribedAt: input.status === "unsubscribed" ? now : existing?.unsubscribedAt ?? null, updatedAt: now };
     }
     if (kind === "campaigns") {
-        fields(input, ["name", "subject", "previewText", "fromName", "fromEmail", "replyTo", "listIds", "segmentIds", "excludeListIds", "excludeSegmentIds", "brandId", "mergeMissingPolicy", "templateId", "providerId", "metadata"], existing ? [] : ["name", "subject", "fromName", "fromEmail", "templateId", "providerId"]);
+        fields(input, ["name", "subject", "previewText", "fromName", "fromEmail", "replyTo", "listIds", "segmentIds", "excludeListIds", "excludeSegmentIds", "brandId", "mergeMissingPolicy", "templateId", "providerId", "sendConcurrency", "metadata"], existing ? [] : ["name", "subject", "fromName", "fromEmail", "templateId", "providerId"]);
         if (existing && existing.status !== "draft")
             throw http(409, "Queued campaign snapshots are immutable");
         const mergeMissingPolicy = input.mergeMissingPolicy ?? existing?.mergeMissingPolicy ?? "empty";
         if (!["error", "empty", "keep"].includes(String(mergeMissingPolicy)))
             throw http(400, "Invalid mergeMissingPolicy");
-        return { ...base, ...input, listIds: input.listIds ?? existing?.listIds ?? [], segmentIds: input.segmentIds ?? existing?.segmentIds ?? [], excludeListIds: input.excludeListIds ?? existing?.excludeListIds ?? [], excludeSegmentIds: input.excludeSegmentIds ?? existing?.excludeSegmentIds ?? [], mergeMissingPolicy, fromEmail: input.fromEmail === undefined ? existing?.fromEmail : email(input.fromEmail), replyTo: input.replyTo === undefined ? existing?.replyTo ?? null : input.replyTo === null ? null : email(input.replyTo), status: existing?.status ?? "draft", scheduledAt: existing?.scheduledAt ?? null, statistics: existing?.statistics ?? { recipients: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, complaints: 0, unsubscribed: 0 }, updatedAt: now };
+        const sendConcurrency = input.sendConcurrency === undefined ? existing?.sendConcurrency ?? 1 : input.sendConcurrency;
+        if (!Number.isInteger(sendConcurrency) || sendConcurrency < 1 || sendConcurrency > 10)
+            throw http(400, "sendConcurrency must be an integer from 1 to 10");
+        return { ...base, ...input, sendConcurrency, listIds: input.listIds ?? existing?.listIds ?? [], segmentIds: input.segmentIds ?? existing?.segmentIds ?? [], excludeListIds: input.excludeListIds ?? existing?.excludeListIds ?? [], excludeSegmentIds: input.excludeSegmentIds ?? existing?.excludeSegmentIds ?? [], mergeMissingPolicy, fromEmail: input.fromEmail === undefined ? existing?.fromEmail : email(input.fromEmail), replyTo: input.replyTo === undefined ? existing?.replyTo ?? null : input.replyTo === null ? null : email(input.replyTo), status: existing?.status ?? "draft", scheduledAt: existing?.scheduledAt ?? null, statistics: existing?.statistics ?? { recipients: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, complaints: 0, unsubscribed: 0 }, updatedAt: now };
     }
     if (kind === "providers") {
         fields(input, ["name", "type", "enabled", "host", "port", "username", "secret", "metadata"], existing ? [] : ["name", "type", "enabled"]);
@@ -1381,11 +1386,15 @@ export function createCampaignsRouter(options = {}) {
         if (!bridge.campaignInsightsQuote)
             throw http(503, "Campaign insights unavailable");
         const events = await db.query("SELECT event_type,count(DISTINCT job_id)::text count FROM campaigns.delivery_events WHERE campaign_id=$1 AND occurred_at >= $2 AND occurred_at < $3 GROUP BY event_type", [campaignId, from, to]);
-        const keys = { provider_delivered: "delivered", provider_opened: "uniqueOpened", provider_clicked: "uniqueClicked", provider_bounced: "hardBounced", provider_soft_bounced: "softBounced", provider_complained: "complaints", provider_unsubscribed: "unsubscribed" };
+        const keys = { provider_delivered: "delivered", provider_opened: "uniqueOpened", provider_clicked: "uniqueClicked", provider_bounced: "hardBounced", provider_soft_bounced: "softBounced", provider_complained: "complaints" };
         const metrics = {};
         for (const row of events.rows)
             if (keys[row.event_type])
                 metrics[keys[row.event_type]] = Number(row.count);
+        const unsubscribed = await db.query("SELECT count(DISTINCT job_id)::text count FROM campaigns.delivery_events WHERE campaign_id=$1 AND occurred_at >= $2 AND occurred_at < $3 AND event_type IN ('provider_unsubscribed','first_party_unsubscribed')", [campaignId, from, to]);
+        // As with provider events, a missing signal is unknown rather than zero.
+        if (events.rows.some(row => row.event_type === "provider_unsubscribed" || row.event_type === "first_party_unsubscribed"))
+            metrics.unsubscribed = Number(unsubscribed.rows[0].count);
         const sent = await db.query("SELECT count(DISTINCT job_id)::text count FROM campaigns.delivery_events WHERE campaign_id=$1 AND occurred_at >= $2 AND occurred_at < $3 AND event_type IN ('accepted','reconciled_accepted')", [campaignId, from, to]);
         metrics.sent = Number(sent.rows[0].count);
         // Missing provider events are omitted, not represented as confirmed zero.
@@ -1436,7 +1445,7 @@ export function createCampaignsRouter(options = {}) {
         count(DISTINCT de.job_id) FILTER (WHERE de.event_type='provider_bounced')::text hard_bounced,
         count(DISTINCT de.job_id) FILTER (WHERE de.event_type='provider_soft_bounced')::text soft_bounced,
         count(DISTINCT de.job_id) FILTER (WHERE de.event_type='provider_complained')::text complaints,
-        count(DISTINCT de.job_id) FILTER (WHERE de.event_type='provider_unsubscribed')::text unsubscribed
+        count(DISTINCT de.job_id) FILTER (WHERE de.event_type IN ('provider_unsubscribed','first_party_unsubscribed'))::text unsubscribed
        FROM campaigns.delivery_events de
        JOIN campaigns.entities e ON e.kind='campaigns' AND e.id=de.campaign_id
        WHERE de.occurred_at >= $1 AND de.occurred_at < $2
@@ -3308,7 +3317,7 @@ export function createCampaignsRouter(options = {}) {
         if (token.length < 16)
             throw http(400, "Invalid token");
         const { subscriberId, previous } = await subscriberTransaction(db, async (tx) => {
-            const result = await tx.query("SELECT subscriber_id FROM campaigns.tokens WHERE token_hash=$1 AND purpose='unsubscribe' AND expires_at>now() FOR UPDATE", [hash(token)]);
+            const result = await tx.query("SELECT subscriber_id,job_id,consumed_at FROM campaigns.tokens WHERE token_hash=$1 AND purpose='unsubscribe' AND expires_at>now() FOR UPDATE", [hash(token)]);
             if (!result.rows[0])
                 throw http(400, "Invalid or expired token");
             const resolved = await tx.query("SELECT campaigns.reconciled_subscriber_id($1::uuid) AS id", [result.rows[0].subscriber_id]);
@@ -3319,6 +3328,24 @@ export function createCampaignsRouter(options = {}) {
                 throw http(400, "Invalid or expired token");
             if (before.rows[0].body.status !== "unsubscribed") {
                 await tx.query("UPDATE campaigns.entities SET body=body||jsonb_build_object('status','unsubscribed','unsubscribedAt',now(),'updatedAt',now()),updated_at=now() WHERE kind='subscribers' AND id=$1", [subscriberId]);
+                // Only a worker-issued link for an actually accepted campaign job
+                // can attribute this transition. Legacy/admin/automation/test links
+                // continue to opt out without inventing campaign delivery history.
+                if (result.rows[0].job_id && !result.rows[0].consumed_at) {
+                    const linked = await tx.query(`SELECT j.campaign_id,j.recipient_id FROM campaigns.jobs j
+             WHERE j.id=$1 AND j.recipient_id=$2 AND j.kind='campaign' AND j.state='sent'
+               AND j.campaign_id IS NOT NULL
+               AND EXISTS (SELECT 1 FROM campaigns.delivery_events de
+                           WHERE de.job_id=j.id AND de.event_type IN ('accepted','reconciled_accepted'))`, [result.rows[0].job_id, result.rows[0].subscriber_id]);
+                    if (linked.rows[0]) {
+                        await appendDeliveryEvent(tx, {
+                            jobId: result.rows[0].job_id, campaignId: linked.rows[0].campaign_id,
+                            recipientId: linked.rows[0].recipient_id,
+                            type: "first_party_unsubscribed", source: "system",
+                        });
+                        await refreshCampaignDeliveryStatistics(tx, linked.rows[0].campaign_id);
+                    }
+                }
             }
             await tx.query("UPDATE campaigns.tokens SET consumed_at=coalesce(consumed_at,now()) WHERE token_hash=$1", [hash(token)]);
             return { subscriberId, previous: before.rows[0].body };
@@ -3643,6 +3670,8 @@ export async function runCampaignsWorker(options = {}) {
 }
 async function runCampaignsWorkerLocked(options, db) {
     const dataDir = options.dataDir ?? process.env.CAMPAIGNS_DATA_DIR ?? join(process.cwd(), ".campaigns-data");
+    // batchSize caps jobs claimed in a tick, not concurrent requests. The
+    // default of 10 permits all 10 configured campaign threads to run.
     const key = secureFile(join(dataDir, "credential-key"), 32), sender = options.send ?? sendMessage, batch = Math.max(1, Math.min(100, options.batchSize ?? 10));
     const connectionRow = await db.query("SELECT connection_secret,connection FROM campaigns.installation");
     if (!connectionRow.rows[0])
@@ -3704,7 +3733,10 @@ async function runCampaignsWorkerLocked(options, db) {
         });
     }
     let sent = 0, rejected = 0, unknown = 0;
-    for (const job of jobs) {
+    // Keep the cross-process restore lock held until every provider request and
+    // post-send write has settled. Pool queries use their own connections; no
+    // transaction client is shared between concurrently executing jobs.
+    const executeJob = async (job) => {
         const snapshot = job.snapshot, campaign = snapshot.campaign, subscriber = snapshot.subscriber, template = snapshot.template;
         const audience = snapshot.audience && typeof snapshot.audience === "object" ? snapshot.audience : {};
         const snapshotScope = typeof audience.scope === "string" ? audience.scope
@@ -3718,7 +3750,7 @@ async function runCampaignsWorkerLocked(options, db) {
         if (identityHold.rowCount) {
             await db.query("UPDATE campaigns.jobs SET state='cancelled',updated_at=now(),revision=revision+1 WHERE id=$1 AND state='sending'", [job.id]);
             await appendDeliveryEvent(db, { jobId: job.id, campaignId: job.campaign_id, recipientId: job.recipient_id, type: "cancelled", source: "worker", metadata: { reason: "reconciled_identity_hold" } });
-            continue;
+            return;
         }
         if (job.recipient_id) {
             const live = await db.query("SELECT body FROM campaigns.entities WHERE kind='subscribers' AND id=$1 AND ($2::text IS NULL OR body->>'scope'=$2) AND NOT EXISTS (SELECT 1 FROM campaigns.subscriber_reconciliations WHERE subscriber_id=$1)", [job.recipient_id, snapshotScope]);
@@ -3726,7 +3758,14 @@ async function runCampaignsWorkerLocked(options, db) {
             if (!live.rows[0] || (!goodbye && live.rows[0].body.status !== "subscribed")) {
                 await db.query("UPDATE campaigns.jobs SET state='cancelled',updated_at=now(),revision=revision+1 WHERE id=$1 AND state='sending'", [job.id]);
                 await appendDeliveryEvent(db, { jobId: job.id, campaignId: job.campaign_id, recipientId: job.recipient_id, type: "cancelled", source: "worker", metadata: { reason: "recipient_suppressed" } });
-                continue;
+                return;
+            }
+        }
+        if (job.kind === "campaign" && job.campaign_id) {
+            const liveCampaign = await db.query("SELECT body->>'status' AS status FROM campaigns.entities WHERE kind='campaigns' AND id=$1", [job.campaign_id]);
+            if (liveCampaign.rows[0]?.status !== "sending") {
+                await db.query("UPDATE campaigns.jobs SET state=$2,claimed_at=NULL,updated_at=now(),revision=revision+1 WHERE id=$1 AND state='sending'", [job.id, liveCampaign.rows[0]?.status === "paused" ? "queued" : "cancelled"]);
+                return;
             }
         }
         const providerId = String(campaign.providerId ?? snapshot.providerId), found = await db.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1 AND body->>'enabled'='true'", [providerId]);
@@ -3734,13 +3773,13 @@ async function runCampaignsWorkerLocked(options, db) {
             await db.query("UPDATE campaigns.jobs SET state='rejected',last_error_code='PROVIDER_UNAVAILABLE',last_error_message='Provider unavailable',updated_at=now(),revision=revision+1 WHERE id=$1", [job.id]);
             await appendDeliveryEvent(db, { jobId: job.id, campaignId: job.campaign_id, recipientId: job.recipient_id, type: "rejected", source: "worker", errorCode: "PROVIDER_UNAVAILABLE" });
             rejected++;
-            continue;
+            return;
         }
         const provider = found.rows[0].body, rate = Math.max(1, Math.min(10000, Number(provider.metadata?.ratePerMinute ?? 60)));
         const used = await db.query("INSERT INTO campaigns.rate_limits(provider_id,bucket,used) VALUES($1,date_trunc('minute',now()),1) ON CONFLICT(provider_id,bucket) DO UPDATE SET used=campaigns.rate_limits.used+1 RETURNING used", [providerId]);
         if ((used.rows[0]?.used ?? 1) > rate) {
             await db.query("UPDATE campaigns.jobs SET state='queued',claimed_at=NULL,run_at=date_trunc('minute',now())+interval '1 minute' WHERE id=$1", [job.id]);
-            continue;
+            return;
         }
         try {
             const attempt = job.attempt_count + 1;
@@ -3760,7 +3799,7 @@ async function runCampaignsWorkerLocked(options, db) {
             let token;
             if (baseUrl && job.recipient_id && Array.isArray(subscriber.listIds) && subscriber.listIds.length) {
                 token = randomBytes(32).toString("base64url");
-                await db.query("INSERT INTO campaigns.tokens(token_hash,purpose,subscriber_id,list_id,email,expires_at) VALUES($1,'unsubscribe',$2,$3,$4,now()+interval '180 days')", [hash(token), job.recipient_id, subscriber.listIds[0], subscriber.email]);
+                await db.query("INSERT INTO campaigns.tokens(token_hash,purpose,subscriber_id,list_id,email,job_id,expires_at) VALUES($1,'unsubscribe',$2,$3,$4,$5,now()+interval '180 days')", [hash(token), job.recipient_id, subscriber.listIds[0], subscriber.email, job.id]);
             }
             const unsubscribe = token ? (() => {
                 const url = publicCampaignsPageUrl(baseUrl, "unsubscribe");
@@ -3901,7 +3940,43 @@ async function runCampaignsWorkerLocked(options, db) {
                     rejected++;
             }
         }
+    };
+    const pending = [...jobs];
+    const running = new Set();
+    const startedTasks = [];
+    const runningByCampaign = new Map();
+    const failures = [];
+    while (pending.length || running.size) {
+        while (running.size < 10) {
+            const index = pending.findIndex(job => {
+                const campaignId = job.kind === "campaign" ? job.campaign_id : null;
+                if (!campaignId)
+                    return true;
+                const configured = job.snapshot.campaign?.sendConcurrency;
+                const limit = Number.isInteger(configured) && Number(configured) >= 1 && Number(configured) <= 10 ? Number(configured) : 1;
+                return (runningByCampaign.get(campaignId) ?? 0) < limit;
+            });
+            if (index < 0)
+                break;
+            const job = pending.splice(index, 1)[0];
+            const campaignId = job.kind === "campaign" ? job.campaign_id : null;
+            if (campaignId)
+                runningByCampaign.set(campaignId, (runningByCampaign.get(campaignId) ?? 0) + 1);
+            const task = executeJob(job).catch(error => { failures.push(error); }).finally(() => {
+                if (campaignId)
+                    runningByCampaign.set(campaignId, (runningByCampaign.get(campaignId) ?? 1) - 1);
+                running.delete(task);
+            });
+            running.add(task);
+            startedTasks.push(task);
+        }
+        if (running.size)
+            await Promise.race(running);
     }
+    // All tasks have settled before surfacing any unexpected database failure.
+    await Promise.allSettled(startedTasks);
+    if (failures.length)
+        throw new AggregateError(failures, "Campaign delivery jobs failed");
     const failedCampaigns = await db.query("UPDATE campaigns.entities e SET body=jsonb_set(e.body,'{status}','\"failed\"'::jsonb),updated_at=now() WHERE e.kind='campaigns' AND e.body->>'status'='sending' AND NOT EXISTS(SELECT 1 FROM campaigns.jobs j WHERE j.campaign_id=e.id AND j.kind='campaign' AND j.state IN ('queued','sending')) AND EXISTS(SELECT 1 FROM campaigns.jobs j WHERE j.campaign_id=e.id AND j.kind='campaign' AND j.state IN ('rejected','unknown')) RETURNING e.id,e.body");
     for (const campaign of failedCampaigns.rows) {
         const name = String(campaign.body.name ?? campaign.id);

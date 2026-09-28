@@ -18,7 +18,7 @@ ALTER TABLE campaigns.delivery_events DROP CONSTRAINT IF EXISTS delivery_events_
 ALTER TABLE campaigns.delivery_events ADD CONSTRAINT delivery_events_event_type_check CHECK (event_type IN (
   'worker_attempt','accepted','rejected','unknown','retry_scheduled','cancelled',
   'provider_delivered','provider_opened','provider_clicked','provider_bounced',
-  'provider_soft_bounced','provider_complained','provider_unsubscribed',
+  'provider_soft_bounced','provider_complained','provider_unsubscribed','first_party_unsubscribed',
   'reconciled_accepted','reconciled_rejected','explicit_retry'
 ));
 

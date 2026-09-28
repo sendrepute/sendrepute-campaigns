@@ -4,7 +4,7 @@ export type Json = Record<string, unknown>;
 export type DeliveryDb = {
     query<T extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<T>>;
 };
-export type DeliveryEventType = "worker_attempt" | "accepted" | "rejected" | "unknown" | "retry_scheduled" | "cancelled" | "provider_delivered" | "provider_opened" | "provider_clicked" | "provider_bounced" | "provider_soft_bounced" | "provider_complained" | "provider_unsubscribed" | "reconciled_accepted" | "reconciled_rejected" | "explicit_retry";
+export type DeliveryEventType = "worker_attempt" | "accepted" | "rejected" | "unknown" | "retry_scheduled" | "cancelled" | "provider_delivered" | "provider_opened" | "provider_clicked" | "provider_bounced" | "provider_soft_bounced" | "provider_complained" | "provider_unsubscribed" | "first_party_unsubscribed" | "reconciled_accepted" | "reconciled_rejected" | "explicit_retry";
 export declare function appendDeliveryEvent(db: DeliveryDb, event: {
     jobId: string;
     campaignId?: string | null;
