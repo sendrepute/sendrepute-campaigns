@@ -19,44 +19,30 @@ Load-test your workload and monitor it before increasing send volume.
 
 ## Install Docker Engine on a fresh Ubuntu server
 
-For a **new Ubuntu 22.04, 24.04, or 26.04 server without an existing Docker
-installation**, install Docker Engine and the Compose plugin from Docker's
-official apt repository. These commands do not uninstall Docker or remove
-volumes. If the server already has Docker (including the Snap package), first
-back up its configuration and volumes and plan a separate migration; do not
-run these commands as an in-place replacement. In particular, do not disable
-AppArmor or Docker security controls to work around Snap Docker permission
-errors. See [Docker's Ubuntu installation guide](https://docs.docker.com/engine/install/ubuntu/)
-for supported releases and updates.
+For a **fresh Ubuntu 24.04 or 26.04 server without Docker**, install Docker
+Engine and Compose v2 using Ubuntu's default apt repositories. No additional
+repository, key, or manual dependency installation is needed; apt installs
+the packages required by `docker.io` and `docker-compose-v2`.
+Compose is required to run this project's `compose.yaml`, not as a separate
+Campaigns application.
 
 ```sh
-sudo apt update
-sudo apt install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2
 sudo systemctl enable --now docker
-sudo docker run --rm hello-world
+sudo docker --version
 sudo docker compose version
 ```
 
-The `hello-world` container and Compose version confirm the installation;
-keep using `sudo docker compose` if your account cannot access the Docker
+If Docker Engine and Compose v2 already work on your server, skip the install
+commands. Do not replace or remove an existing Docker installation, repository,
+Snap package, configuration, or volumes as part of this quickstart; back up
+and plan any migration separately. In particular, do not disable AppArmor or
+Docker security controls to work around Snap Docker permission errors.
+Keep using `sudo docker compose` if your account cannot access the Docker
 socket. Do not add untrusted users to the `docker` group: membership grants
-root-equivalent host access. The Campaigns quickstart below assumes Docker and
-the Compose plugin are already working.
+root-equivalent host access. The Campaigns quickstart below assumes Docker
+and Compose v2 are already working.
 
 ## Docker Compose quickstart
 
