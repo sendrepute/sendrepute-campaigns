@@ -41,6 +41,7 @@ services:
     environment:
       DATABASE_URL: postgresql://campaigns:${CAMPAIGNS_POSTGRES_PASSWORD}@postgres:5432/campaigns
       CAMPAIGNS_TRUST_PROXY: ${CAMPAIGNS_TRUST_PROXY:-false}
+      CAMPAIGNS_INSECURE_HTTP_ORIGIN: ${CAMPAIGNS_INSECURE_HTTP_ORIGIN:-}
       CAMPAIGNS_HTTPS_SITE_DIR: /var/lib/sendrepute-campaigns/https-site
     ports:
       - "${CAMPAIGNS_BIND_ADDRESS:-127.0.0.1}:${CAMPAIGNS_HTTP_PORT:-8080}:8080"

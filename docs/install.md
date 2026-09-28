@@ -5,11 +5,12 @@
 - A supported 64-bit host with current security updates. Linux x64/ARM64 is
   the intended Docker target; Windows should use Docker Desktop/WSL2. Native
   Windows archive behavior has not yet been confirmed.
-- Docker Engine with Compose v2 for the quickstart, **or** Node.js 22 or newer
-  and PostgreSQL for the alternative path.
+- Docker Engine with Compose v2 for the Docker path (the guided setup can offer
+  to install both on fresh Ubuntu 24.04/26.04), **or** Node.js 22 or newer and
+  PostgreSQL for the alternative path.
 - Persistent storage for PostgreSQL, application state, and separate backups.
-- A reverse proxy with a trusted TLS certificate and DNS you control for
-  internet use.
+- A public hostname, working DNS and a trusted TLS certificate for production
+  internet use. The guided setup can start the included Caddy proxy.
 - Outbound access to the mail provider you configure. SendRepute features also
   require outbound HTTPS and a separately issued SendRepute API key.
 
@@ -17,7 +18,78 @@ No honest capacity number is available yet. CPU, memory, database I/O, message
 size, provider limits, tracking traffic, and list shape all affect capacity.
 Load-test your workload and monitor it before increasing send volume.
 
-## Install Docker Engine on a fresh Ubuntu server
+## Guided Docker quickstart
+
+Download the [v0.1.26 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.26/downloads/sendrepute-campaigns-0.1.26.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.26/downloads/sendrepute-campaigns-0.1.26.tar.gz)
+and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.26/downloads/sendrepute-campaigns-0.1.26-SHA256SUMS).
+These are repository downloads, not GitHub Release binary assets. GitHub's
+**Code → Download ZIP** provides a repository snapshot rather than the
+checksummed runtime release archive. Do not pipe a remote script into a shell.
+
+From the extracted release archive **or repository directory**, run:
+
+```sh
+./setup.sh
+```
+
+Follow the prompts; no `.env` editing or separate Compose command is needed
+for the guided path. If a non-Snap Docker Engine and Compose v2 already work,
+setup reuses them without replacing them. On a fresh Ubuntu 24.04/26.04 host missing Docker,
+it asks for consent before installing Ubuntu's `docker.io` and
+`docker-compose-v2` packages. It stops on detecting Snap Docker; it does not
+automatically remove or migrate Snap Docker. If an existing installation does
+not work, investigate it rather than assuming it is safe to replace.
+
+The guided network choice determines the address to open:
+
+| Choice | Installation address | Before choosing |
+| --- | --- | --- |
+| Local only | `http://localhost:8080/campaigns/install` **on the server** | The app listens on host loopback. For access from another computer, use a trusted SSH tunnel or configure a trusted reverse proxy. `localhost` on your laptop is not the remote server. |
+| Public domain + HTTPS | `https://campaigns.example.com/campaigns/install` (replace with **your** hostname) | Point its public `A` record to this server; publish `AAAA` only if IPv6 reaches it. Allow inbound TCP 80/443 through host/cloud firewalls and forward them through NAT if needed. Nothing else may own those ports. Setup starts the included Compose `https` profile/Caddy, which can request a certificate only when public DNS and ACME reach the host. |
+| Public IP + HTTP | `http://YOUR_PUBLIC_IP:8080/campaigns/install` (replace with **your** public IPv4 address) | This exposes the application over **unencrypted HTTP** and requires an explicit warning/confirmation. Allow inbound TCP 8080 through host/cloud firewalls and forward it through NAT if needed. Passwords, setup token and sessions can be intercepted on an untrusted network; do **not** treat this as a secure production deployment. Prefer public domain + HTTPS. |
+
+Use the corresponding `http://localhost:8080/campaigns/`,
+`https://campaigns.example.com/campaigns/`, or
+`http://YOUR_PUBLIC_IP:8080/campaigns/` as the Public URL in the installation
+wizard (replace example host/IP with the one you chose). Public IP over HTTP is
+not a substitute for trusted TLS when sending links to real recipients. There
+is an explicit exact-origin HTTP opt-in in the v0.1.26 backend and guided
+setup; an older backend will still reject an HTTP Public URL even if you edit
+`.env` or enter the URL in the wizard. Upgrade and rebuild the backend, then
+select Public IP + HTTP and confirm its warnings. This opt-in permits only the
+selected public IPv4 address and port for installation and session cookies,
+not arbitrary insecure origins. The Public URL must end in `/campaigns/`.
+There is no default administrator account or password. On first boot the server
+generates a random setup token inside its protected data volume. Setup does
+**not** print the token automatically; when the app is ready, retrieve it
+explicitly on the host:
+
+```sh
+docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token
+```
+
+If Docker requires privilege, use `sudo docker compose exec` instead. This
+command prints the secret to your terminal; protect terminal history/capture.
+Use the wizard to create the owner with a strong unique password. The setup
+transaction can succeed only once; the token cannot create another owner
+afterward. A setup token is not an administrator password.
+
+On a rerun, preserve the existing private `.env`, PostgreSQL and application
+volumes, and encryption key. Review and confirm any proposed reconfiguration;
+back up before changing network mode or upgrading. Never run
+`docker compose down -v` against an installation with data. See
+[operations, backup and restore](operations.md).
+
+For public domain + HTTPS, Caddy accepting its configuration (including a
+reported "active" status) is **not** proof that ACME issued a certificate or
+that the site works externally. From a separate network, open the exact HTTPS
+installation URL, inspect the trusted certificate and test public links through
+the proxy before sending mail. DNS pointing to the server alone is not enough.
+
+## Manual Docker setup (advanced)
+
+### Install Docker Engine on a fresh Ubuntu server
 
 For a **fresh Ubuntu 24.04 or 26.04 server without Docker**, install Docker
 Engine and Compose v2 using Ubuntu's default apt repositories. No additional
@@ -41,26 +113,20 @@ and plan any migration separately. In particular, do not disable AppArmor or
 Docker security controls to work around Snap Docker permission errors.
 Keep using `sudo docker compose` if your account cannot access the Docker
 socket. Do not add untrusted users to the `docker` group: membership grants
-root-equivalent host access. The Campaigns quickstart below assumes Docker
+root-equivalent host access. The manual steps below assume Docker
 and Compose v2 are already working.
 
-## Docker Compose quickstart
+### Start Docker Compose manually
 
-Download the [v0.1.25 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.25/downloads/sendrepute-campaigns-0.1.25.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.25/downloads/sendrepute-campaigns-0.1.25.tar.gz)
-and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.25/downloads/sendrepute-campaigns-0.1.25-SHA256SUMS).
-These are repository downloads, not GitHub Release binary assets. GitHub's
-**Code → Download ZIP** provides a repository snapshot rather than the
-checksummed runtime release archive. Do not pipe a remote script into a shell.
-
-From the extracted release:
+From the extracted release archive or repository directory:
 
 ```sh
 ./install.sh
 docker compose up -d --build
 ```
 
-`install.sh` writes a mode-0600 `.env`, generates a random PostgreSQL secret
+`install.sh` is the low-level manual initializer, not the guided installer.
+It writes a mode-0600 `.env`, generates a random PostgreSQL secret
 without printing it, and creates local
 operator-owned backup directories. It never downloads or executes remote
 code. Compose automatically wires PostgreSQL, waits for its health check, uses
@@ -69,21 +135,11 @@ On first start, Campaigns generates its separate file-encryption key inside
 the protected application volume. There is no shared default administrator
 password.
 
-Open `http://localhost:8080/campaigns/install` on the host. On first boot, the
-server creates a random setup token in its protected data directory. Retrieve
-it only on the host with:
+Open `http://localhost:8080/campaigns/install` on the host. Retrieve the
+one-time token explicitly with the command in the guided quickstart above,
+then use the wizard to create the owner and set the public URL.
 
-```sh
-docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token
-```
-
-This explicit command prints the secret to your terminal, unlike the installer
-and normal logs; protect terminal history/capture. Use the wizard to create the
-owner account, choose a strong unique password and set the public URL. The
-setup transaction can succeed only once; afterward the same token cannot
-create another owner. A setup token is not an administrator password.
-
-### Connect your domain over HTTPS
+### Connect your domain over HTTPS manually
 
 The included optional Caddy service can terminate HTTPS for a Linux server
 with a public address. Choose a hostname you control, for example

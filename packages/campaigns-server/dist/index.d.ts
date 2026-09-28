@@ -33,6 +33,7 @@ export interface CampaignsRouterOptions {
     pool?: Db;
     dataDir?: string;
     secureCookies?: boolean;
+    insecureHttpOrigin?: string;
     trustProxy?: boolean;
     sessionHours?: number;
     activationRevalidateMs?: number;

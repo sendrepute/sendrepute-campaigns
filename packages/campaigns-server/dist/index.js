@@ -245,7 +245,30 @@ function email(value) {
         throw http(400, "Invalid email address");
     return result;
 }
-function publicUrl(value) {
+function validatedInsecureHttpOrigin(value) {
+    if (!value)
+        return null;
+    // This is an operator-only setting, not request input. Reject ambiguous
+    // URL spellings, private addresses, paths, credentials and default ports.
+    const match = /^http:\/\/([0-9]{1,3}(?:\.[0-9]{1,3}){3}):([1-9][0-9]{0,4})$/.exec(value);
+    if (!match)
+        throw new Error("CAMPAIGNS_INSECURE_HTTP_ORIGIN must be an exact public IPv4 HTTP origin with an explicit port");
+    const octets = match[1].split(".").map(Number);
+    const [a, b, c] = octets;
+    const port = Number(match[2]);
+    if (octets.some((part, index) => part > 255 || String(part) !== match[1].split(".")[index]) ||
+        port > 65535 || port === 80 || String(port) !== match[2] ||
+        a === 0 || a === 10 || a === 127 || a >= 224 ||
+        (a === 100 && b >= 64 && b <= 127) ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)))) ||
+        (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+        (a === 203 && b === 0 && c === 113))
+        throw new Error("CAMPAIGNS_INSECURE_HTTP_ORIGIN must use a canonical routable public IPv4 address and non-default explicit port");
+    return value;
+}
+function publicUrl(value, insecureHttpOrigin = null) {
     let result;
     try {
         result = new URL(String(value));
@@ -258,21 +281,26 @@ function publicUrl(value) {
         throw http(400, "Public URL must be an HTTP(S) URL without credentials, query, or fragment");
     }
     if (result.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(result.hostname)) {
-        throw http(400, "Public URL must use HTTPS; plain HTTP is allowed only for local development");
+        if (!insecureHttpOrigin || String(value) !== `${insecureHttpOrigin}/campaigns/` ||
+            result.origin !== new URL(insecureHttpOrigin).origin || result.pathname !== "/campaigns/") {
+            throw http(400, "Public URL must use HTTPS; public HTTP requires the exact operator-approved origin and /campaigns/ path");
+        }
     }
     return result;
 }
 function deliveryPublicUrl(value) {
     let url;
+    const approvedOrigin = validatedInsecureHttpOrigin(process.env.CAMPAIGNS_INSECURE_HTTP_ORIGIN);
     try {
-        url = publicUrl(value);
+        url = publicUrl(value, approvedOrigin);
     }
     catch {
         throw Object.assign(new Error("A valid public unsubscribe URL is required"), { deliveryState: "not-sent", code: "UNSUBSCRIBE_UNAVAILABLE" });
     }
-    // Local development may use plain HTTP on loopback only. Public one-click
-    // links must not downgrade to HTTP or contain URL parser ambiguities.
-    if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) ||
+    // Public HTTP is permitted only at the precise operator-approved origin and
+    // base path (after explicit installer warning), never via arbitrary settings.
+    if (url.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
+        (!approvedOrigin || String(value) !== `${approvedOrigin}/campaigns/`) ||
         /[\r\n]/.test(url.toString())) {
         throw Object.assign(new Error("A secure public unsubscribe URL is required"), { deliveryState: "not-sent", code: "UNSUBSCRIBE_UNAVAILABLE" });
     }
@@ -913,12 +941,15 @@ function normalize(kind, input, existing) {
         throw http(400, "Missing field: text");
     return { ...base, ...input, updatedAt: now };
 }
-async function issueSession(ctx, response, userId) {
+async function issueSession(ctx, request, response, userId) {
     const session = randomBytes(32).toString("base64url");
     const csrf = randomBytes(24).toString("base64url");
     await ctx.db.query("INSERT INTO campaigns.sessions(id_hash,user_id,csrf_hash,csrf_token,expires_at) VALUES($1,$2,$3,$4,now()+($5||' hours')::interval)", [hash(session), userId, hash(csrf), csrf, String(ctx.sessionHours)]);
     const attrs = [`${COOKIE}=${encodeURIComponent(session)}`, "HttpOnly", "Path=/api/campaigns", "SameSite=Strict", `Max-Age=${ctx.sessionHours * 3600}`];
-    if (ctx.secureCookies)
+    const approvedHttp = ctx.insecureHttpOrigin && !request.secure &&
+        (request.get("host") === new URL(ctx.insecureHttpOrigin).host ||
+            `http://${request.get("host") ?? ""}` === ctx.insecureHttpOrigin);
+    if (ctx.secureCookies && !approvedHttp)
         attrs.push("Secure");
     response.setHeader("Set-Cookie", attrs.join("; "));
     return csrf;
@@ -944,6 +975,7 @@ function demoBootstrap(request) {
     return { status: statusData(false, request, false), dashboard: demoDashboard, ...demo };
 }
 export function createCampaignsRouter(options = {}) {
+    const insecureHttpOrigin = validatedInsecureHttpOrigin(options.insecureHttpOrigin ?? process.env.CAMPAIGNS_INSECURE_HTTP_ORIGIN);
     const db = options.pool ?? new Pool({ connectionString: options.databaseUrl ?? campaignsDatabaseUrl(), max: 10 });
     const dataDir = options.dataDir ?? process.env.CAMPAIGNS_DATA_DIR ?? join(process.cwd(), ".campaigns-data");
     const ctx = {
@@ -952,6 +984,7 @@ export function createCampaignsRouter(options = {}) {
         key: secureFile(join(dataDir, "credential-key"), 32),
         setupToken: installerToken(dataDir),
         secureCookies: options.secureCookies ?? process.env.NODE_ENV === "production",
+        insecureHttpOrigin,
         sessionHours: options.sessionHours ?? 12,
         activationRevalidateMs: options.activationRevalidateMs ?? 15 * 60 * 1000,
         bridgeFactory: options.bridgeFactory ?? ((apiKey) => new SendReputeClient({ secret: apiKey })),
@@ -1193,7 +1226,7 @@ export function createCampaignsRouter(options = {}) {
         if (!ctx.setupToken || !equalText(String(body.setupToken), ctx.setupToken))
             throw http(403, "Invalid installer token");
         const password = validatePassword(body.password);
-        const configuredPublicUrl = publicUrl(body.publicUrl);
+        const configuredPublicUrl = publicUrl(body.publicUrl, ctx.insecureHttpOrigin);
         let snapshot;
         try {
             snapshot = await ctx.bridgeFactory(String(body.sendReputeApiKey)).getConnectionSnapshot();
@@ -1230,7 +1263,7 @@ export function createCampaignsRouter(options = {}) {
                 unlinkSync(join(ctx.dataDir, "installer-token"));
             }
             catch { }
-            const csrf = await issueSession(ctx, response, userId);
+            const csrf = await issueSession(ctx, request, response, userId);
             request.user = { ...user, permissions: [...permissions.owner] };
             request.csrfToken = csrf;
             await audit(ctx, request, "installation.setup", "installation", null);
@@ -1265,7 +1298,7 @@ export function createCampaignsRouter(options = {}) {
             throw http(401, "Invalid email or password");
         }
         await db.query("DELETE FROM campaigns.login_attempts WHERE fingerprint=$1", [key]);
-        const csrf = await issueSession(ctx, response, row.id);
+        const csrf = await issueSession(ctx, request, response, row.id);
         await db.query("UPDATE campaigns.users SET body=body||jsonb_build_object('lastLoginAt',now()),updated_at=now() WHERE id=$1", [row.id]);
         const roleIds = row.body.roleIds;
         const roles = await db.query("SELECT body FROM campaigns.roles WHERE id=ANY($1::uuid[])", [roleIds]);
@@ -2039,7 +2072,7 @@ export function createCampaignsRouter(options = {}) {
             const installation = (await tx.query("SELECT settings FROM campaigns.installation")).rows[0];
             let base;
             try {
-                base = publicUrl(installation?.settings.publicUrl);
+                base = publicUrl(installation?.settings.publicUrl, ctx.insecureHttpOrigin);
             }
             catch {
                 throw http(409, "Configure a public HTTPS installation URL before provisioning the webhook");
@@ -2096,7 +2129,7 @@ export function createCampaignsRouter(options = {}) {
             const installation = (await tx.query("SELECT settings FROM campaigns.installation")).rows[0];
             let base;
             try {
-                base = publicUrl(installation?.settings.publicUrl);
+                base = publicUrl(installation?.settings.publicUrl, ctx.insecureHttpOrigin);
             }
             catch {
                 throw http(409, "Configure a public HTTPS installation URL before provisioning the webhook");
@@ -2137,7 +2170,7 @@ export function createCampaignsRouter(options = {}) {
             const installation = (await tx.query("SELECT settings FROM campaigns.installation")).rows[0];
             let base;
             try {
-                base = publicUrl(installation?.settings.publicUrl);
+                base = publicUrl(installation?.settings.publicUrl, ctx.insecureHttpOrigin);
             }
             catch {
                 throw http(409, "Configure a public HTTPS installation URL before provisioning the webhook");
@@ -2718,7 +2751,7 @@ export function createCampaignsRouter(options = {}) {
         if (!Object.keys(body).length)
             throw http(400, "Patch must not be empty");
         if (body.publicUrl !== undefined)
-            body.publicUrl = publicUrl(body.publicUrl).toString();
+            body.publicUrl = publicUrl(body.publicUrl, ctx.insecureHttpOrigin).toString();
         if (body.defaultFromEmail)
             body.defaultFromEmail = email(body.defaultFromEmail);
         const result = await db.query("UPDATE campaigns.installation SET settings=settings||$1::jsonb RETURNING settings", [body]);

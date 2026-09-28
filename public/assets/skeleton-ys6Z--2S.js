@@ -1,0 +1,1 @@
+import{j as o}from"./index-BSZ9Th9g.js";import{G as s}from"./App-db_f4egI.js";function a({className:r,...e}){return o.jsx("div",{"aria-hidden":"true",className:s("sr-skeleton rounded-md",r),...e})}export{a as S};
