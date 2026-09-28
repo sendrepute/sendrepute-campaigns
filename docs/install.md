@@ -20,6 +20,27 @@ Load-test your workload and monitor it before increasing send volume.
 
 ## Guided Docker quickstart
 
+On a **fresh Ubuntu 24.04/26.04 server without an existing Campaigns
+installation**, start with these commands. The guided setup handles Docker
+installation with your consent if Docker is missing:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/sendrepute/sendrepute-campaigns.git
+cd sendrepute-campaigns
+./setup.sh
+```
+
+Do **not** clone over an existing Campaigns installation or use this
+fresh-install sequence for an upgrade. Back up `.env`, the database and
+application volumes, and follow the [upgrade instructions](operations.md)
+instead. For an existing Git clone, inspect local edits and use
+`git pull --ff-only` as described in the [repository README](https://github.com/sendrepute/sendrepute-campaigns#upgrade-and-backup);
+never force-reset private settings or delete volumes.
+
+Alternatively, use a versioned release archive:
+
 Download the [v0.1.26 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.26/downloads/sendrepute-campaigns-0.1.26.zip)
 or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.26/downloads/sendrepute-campaigns-0.1.26.tar.gz)
 and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.26/downloads/sendrepute-campaigns-0.1.26-SHA256SUMS).
