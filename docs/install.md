@@ -36,7 +36,7 @@ Do **not** clone over an existing Campaigns installation or use this
 fresh-install sequence for an upgrade. Back up `.env`, the database and
 application volumes, and follow the [upgrade instructions](operations.md)
 instead. For an existing Git clone, inspect local edits and use
-`git pull --ff-only` as described in the [repository README](https://github.com/sendrepute/sendrepute-campaigns#upgrade-and-backup);
+`git pull --ff-only && ./setup.sh --mode resume` as described in the [repository README](https://github.com/sendrepute/sendrepute-campaigns#update);
 never force-reset private settings or delete volumes.
 
 Alternatively, use a versioned release archive:
@@ -212,12 +212,13 @@ this **in its project directory on the VPS**:
 ```
 
 For an existing Git clone upgrade, first back up PostgreSQL, application
-data/encryption key and `.env`, then in that **existing clone**:
+data/encryption key and `.env` using the
+[full Docker backup procedure](operations.md#docker-infrastructure-backup),
+then in that **existing clone**:
 
 ```sh
 git status --short
-git pull --ff-only
-./setup.sh --mode resume
+git pull --ff-only && ./setup.sh --mode resume
 ```
 
 If pull refuses due to local edits, especially to `compose.yaml`, preserve

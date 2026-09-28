@@ -24,7 +24,7 @@ cd sendrepute-campaigns
 Setup asks which access mode to use and reuses working Docker/Compose; on a
 fresh supported Ubuntu server without Docker, it requests consent to install
 Ubuntu's packages. It does not remove Snap Docker or bypass AppArmor. Do not
-clone over an existing installation; see [Upgrade and backup](#upgrade-and-backup).
+clone over an existing installation; see [Update](#update).
 
 For a new owner, follow the URL printed by setup and enter the corresponding
 Public URL ending in `/campaigns/`. Setup does **not** print the one-time owner
@@ -74,17 +74,39 @@ extract, and run `./setup.sh` there. These are repository downloads, **not**
 GitHub Release binary attachments; **Code → Download ZIP** is a different
 snapshot. See the [v0.1.28 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.28).
 
-## Upgrade and backup
+## Update
 
-Back up the database, application data/encryption key and private `.env`
-**before** upgrading; preserve the Compose project name and volumes. In an
-existing Git clone, inspect local changes, then use `git pull --ff-only` and
-`./setup.sh --mode resume` to retain the current exposure. If pull refuses,
-reconcile edits rather than force-resetting. For an archive upgrade, verify and
-extract to a **new directory**, carry over the same private configuration and
-volumes, and stop the old service before starting the new one. **Never run
-`docker compose down -v` against real data.** Changes to exposure may briefly
-interrupt access. Follow [upgrade and restore instructions](docs/operations.md#upgrade).
+Back up first; see [Back up](#back-up).
+On the VPS, **inside your existing Git clone** (not a fresh clone), inspect
+local changes, then run:
+
+```sh
+git status --short
+git pull --ff-only && ./setup.sh --mode resume
+```
+
+`resume` preserves the existing access mode, including HTTPS. If pull refuses,
+reconcile edits rather than force-resetting. Preserve `.env`, the same Compose
+project, PostgreSQL and application volumes, and encryption key. Never run
+`docker compose down -v` against real data. For archive upgrades, use the
+[upgrade instructions](docs/operations.md#upgrade), not a new clone over the
+installation.
+
+## Back up
+
+Preserve the full PostgreSQL database, application data/encryption key,
+private `.env` and HTTPS/Caddy state. Follow the
+[complete Docker backup commands](docs/operations.md#docker-infrastructure-backup),
+then keep encrypted, access-controlled off-host copies. An in-app JSON export
+is not an infrastructure backup.
+
+## Restore
+
+Restore only from a verified, matching PostgreSQL **and** data-volume backup;
+the in-app JSON export omits delivery jobs, audit events and other runtime
+state. Restoring can overwrite newer data or resume queued mail. Follow the
+[isolated restore steps](docs/operations.md#restore-to-an-empty-isolated-installation)
+before any production cutover.
 
 ## More information
 
