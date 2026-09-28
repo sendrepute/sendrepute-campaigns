@@ -50,6 +50,70 @@ steps. Select one of:
   TCP 8080. **This is unencrypted and exposes passwords, setup token and
   sessions to interception. Do not use it as a secure production deployment.**
 
+### Setup command cookbook
+
+Run these **on the Ubuntu VPS, inside the cloned or extracted
+`sendrepute-campaigns` directory**, not in a terminal on your laptop. The fresh
+clone commands above are for a server with no existing Campaigns installation;
+do not clone over an existing `.env`, database, or volumes. To choose a mode
+interactively, simply run `./setup.sh`. Alternatively:
+
+| Goal | Command on the VPS | What it does |
+| --- | --- | --- |
+| New HTTPS installation | `./setup.sh --mode https --host campaigns.sendrepute.com` | Starts the included Caddy HTTPS profile for **your** DNS hostname (replace the example). If Docker is missing, an interactive run asks before installing Ubuntu packages. |
+| Move an existing public-IP HTTP installation to HTTPS | `./setup.sh --mode https --host campaigns.sendrepute.com` | Reviews the change, prompts for confirmation, preserves `.env` secrets and volumes, and starts Caddy. Back up first; switching exposure may briefly interrupt access. |
+| Public IPv4 over unencrypted HTTP | `./setup.sh --mode http --host YOUR_PUBLIC_IP` | Requires explicit warning/consent, listens publicly on the configured backend port (default 8080). **Not secure production access.** |
+| Local only | `./setup.sh --mode local` | Keeps the app on server loopback; use a trusted SSH tunnel from your own computer. |
+| Resume existing configuration | `./setup.sh --mode resume` | Reuses existing settings without changing exposure. Only for an already initialized `.env`. |
+| Show available flags | `./setup.sh --help` | Prints the supported command options; `-h` works too. |
+
+`campaigns.sendrepute.com` is an **example to replace** with the exact
+hostname you control; `campaign.sendrepute.com` is a **different** DNS name.
+Point that exact hostname's `A` record to your VPS public IPv4; publish `AAAA`
+only when IPv6 actually reaches the VPS. Allow inbound TCP 80/443 through
+host/cloud firewalls and NAT and ensure nothing else owns these ports. DNS only
+resolves the hostname: it does **not** forward 443 to 8080. Setup starts Caddy
+for HTTPS and keeps the app backend on loopback. If Cloudflare proxies the
+hostname, use **Full (strict)**, never Flexible. Test the trusted certificate
+and external HTTPS reachability; local container health does not prove either.
+An existing installed workspace also needs its Public URL changed in
+**Workspace Settings** to `https://YOUR_HOSTNAME/campaigns/`; setup changes
+Compose configuration, **not** the saved database setting. For a new owner,
+enter that same URL (including `/campaigns/`) in the installation wizard.
+
+Supported flags: `--mode local|http|https|resume` chooses the access mode;
+`--host HOST` supplies a DNS hostname for HTTPS or routable public IPv4 for
+HTTP (no scheme, path or port); `--accept-http` explicitly acknowledges
+unencrypted HTTP in unattended use; `--confirm-change` explicitly authorizes
+a change to an existing installation's exposure in unattended use;
+`--install-docker` explicitly authorizes Ubuntu `docker.io` and
+`docker-compose-v2` installation **only when missing** on Ubuntu 24.04/26.04;
+`--wait-seconds 1..600` sets the readiness timeout (default 120 seconds);
+`--help`/`-h` displays usage. In interactive use, the script requests necessary
+consent instead; these flags do not silently bypass consent. It never removes
+Snap Docker or disables AppArmor. For all options and troubleshooting, see the
+[detailed setup commands](docs/install.md#guided-setup-command-cookbook).
+
+In local mode, run this tunnel **on your own computer**, replacing the SSH
+user/server; open `http://127.0.0.1:18080/campaigns/install` there for a
+new owner, not on the VPS:
+
+```sh
+ssh -o ExitOnForwardFailure=yes -N -L 18080:127.0.0.1:8080 USER@YOUR_SERVER_HOST
+```
+
+For safe service status and bounded diagnostic logs, run these **on the VPS
+in the project directory** (`sudo docker compose` if required):
+
+```sh
+docker compose --profile https ps
+docker compose --profile https logs --tail=100 campaigns https postgres
+```
+
+Logs may still contain sensitive values; redact them before sharing. Never
+share `.env` or the one-time owner token. Status alone does not prove the
+public HTTPS certificate or external connectivity.
+
 Public-IP HTTP works only with the **v0.1.26 (or newer) backend** and the
 guided setup's explicit warning/confirmation. It enables the exact
 `http://PUBLIC_IP:PORT` origin for the wizard and session cookies; simply
@@ -81,7 +145,7 @@ The wizard validates a SendRepute API key for activation. **Activation requires 
 
 Back up PostgreSQL, application data/encryption key and your private `.env` first. Verify the archive checksum and extract into a **new directory**. Stop the old Campaigns service before starting the new one; do not run both against the same database. Copy your existing `.env` without regenerating it, and retain the same Compose project name (default `sendrepute-campaigns`) and existing `campaigns-postgres` / `campaigns-data` volumes. Preserve any custom Compose overrides and bind-mount paths. Never use `docker compose down -v`.
 
-For an existing Git clone, back up first, inspect local edits with `git status --short`, then run `git pull --ff-only` from that repository directory. If pull refuses due to local changes (especially a custom `compose.yaml`), preserve and reconcile them manually; do not force-reset or overwrite private `.env` or volumes. Run `./setup.sh` and select **Public HTTP IP** with your actual public IPv4 address, accepting the warning and the existing-exposure confirmation. Setup retains existing secrets and data, updates its exact-origin opt-in, and rebuilds the **new backend**. In noninteractive use the equivalent is `./setup.sh --mode http --host YOUR_PUBLIC_IP --accept-http --confirm-change`; replace the example IP, and review firewall exposure first.
+For an existing Git clone, back up first, inspect local edits with `git status --short`, then run `git pull --ff-only` from that repository directory. If pull refuses due to local changes (especially a custom `compose.yaml`), preserve and reconcile them manually; do not force-reset or overwrite private `.env` or volumes. Run `./setup.sh --mode resume` to rebuild and retain the existing access mode; choose `--mode https --host YOUR_HOSTNAME` only when intentionally changing exposure, confirming the prompt (or add `--confirm-change` for unattended operation). For a deliberate HTTP-IP setup, `./setup.sh --mode http --host YOUR_PUBLIC_IP` requires explicit unencrypted-HTTP consent; unattended use also requires `--accept-http` and, if changing existing exposure, `--confirm-change`. Review firewall exposure first.
 
 From a new extracted archive with the same project and copied private `.env`, use guided setup to opt in to Public HTTP, or run `docker compose up -d --build` with the same project/override options for unchanged network modes. For non-Docker installations, keep the existing database URL, configuration, data directory and encryption key, run `npm ci --omit=dev --ignore-scripts`, then restart against the new runtime. Server startup applies included database migrations. Check health before resuming schedules and hard-refresh the browser. A rollback after migration may require restoring the **matching** pre-upgrade database and data directory. The application export alone does not preserve delivery history. See [operations, backup and restore](docs/operations.md) and the [release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.27). Do not commit `.env`, data, tokens or backups.
 
