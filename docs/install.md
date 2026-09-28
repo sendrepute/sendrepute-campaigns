@@ -41,9 +41,9 @@ never force-reset private settings or delete volumes.
 
 Alternatively, use a versioned release archive:
 
-Download the [v0.1.28 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.28/downloads/sendrepute-campaigns-0.1.28.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.28/downloads/sendrepute-campaigns-0.1.28.tar.gz)
-and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.28/downloads/sendrepute-campaigns-0.1.28-SHA256SUMS).
+Download the [v0.1.29 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.29/downloads/sendrepute-campaigns-0.1.29.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.29/downloads/sendrepute-campaigns-0.1.29.tar.gz)
+and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.29/downloads/sendrepute-campaigns-0.1.29-SHA256SUMS).
 These are repository downloads, not GitHub Release binary assets. GitHub's
 **Code → Download ZIP** provides a repository snapshot rather than the
 checksummed runtime release archive. Do not pipe a remote script into a shell.
@@ -495,7 +495,21 @@ it cannot verify public IP reputation, DNS alignment, recipient delivery or
 bounce processing. Do not send production campaigns until those checks are
 independently complete.
 
-### Campaign sending threads and unsubscribe reporting (v0.1.28)
+### Campaign sender defaults and review
+
+In a new draft, **From name** and **From email** fill from installation Settings
+only while the individual fields are untouched and empty. Existing custom
+campaign senders are not overwritten. To intentionally replace both fields,
+choose **Use sender from Settings** in the campaign editor. Review the shown
+sender before **Send**, **Schedule** or **Test**; **Change sender** returns to
+the editor without submitting that action. If the name or email is missing or
+invalid, correct it before proceeding; the server rejects invalid sender
+details as well. Review the saved draft after changing installation defaults:
+defaults do not silently rewrite a previously chosen sender. This UI is
+available in English and 13 non-English locales with AI-assisted (Gemini)
+translations.
+
+### Campaign sending threads and unsubscribe reporting
 
 In the campaign editor, **Threads (simultaneous sends)** controls concurrent
 requests for that campaign: select **1–10**, with **1** as the default. Change

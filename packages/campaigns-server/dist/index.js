@@ -245,6 +245,13 @@ function email(value) {
         throw http(400, "Invalid email address");
     return result;
 }
+function requireCampaignSender(campaign) {
+    if (typeof campaign.fromName !== "string" || !campaign.fromName.trim()
+        || typeof campaign.fromEmail !== "string" || !campaign.fromEmail.trim()) {
+        throw http(400, "Campaign sender name and email are required before sending");
+    }
+    email(campaign.fromEmail);
+}
 function validatedInsecureHttpOrigin(value) {
     if (!value)
         return null;
@@ -921,6 +928,8 @@ function normalize(kind, input, existing) {
     }
     if (kind === "campaigns") {
         fields(input, ["name", "subject", "previewText", "fromName", "fromEmail", "replyTo", "listIds", "segmentIds", "excludeListIds", "excludeSegmentIds", "brandId", "mergeMissingPolicy", "templateId", "providerId", "sendConcurrency", "metadata"], existing ? [] : ["name", "subject", "fromName", "fromEmail", "templateId", "providerId"]);
+        if (input.fromName !== undefined && (typeof input.fromName !== "string" || !input.fromName.trim()))
+            throw http(400, "Campaign sender name is required");
         if (existing && existing.status !== "draft")
             throw http(409, "Queued campaign snapshots are immutable");
         const mergeMissingPolicy = input.mergeMissingPolicy ?? existing?.mergeMissingPolicy ?? "empty";
@@ -2418,6 +2427,7 @@ export function createCampaignsRouter(options = {}) {
         fields(body, ["scheduledAt"], ["scheduledAt"]);
         const id = String(request.params.campaignId), campaign = await getEntity(ctx, "campaigns", id);
         assertEntityAllowed(request, "campaigns", campaign);
+        requireCampaignSender(campaign);
         if (campaign.status !== "draft")
             throw http(409, "Only draft campaigns can be scheduled");
         if (!campaign.listIds.length && !campaign.segmentIds.length)
@@ -2437,6 +2447,7 @@ export function createCampaignsRouter(options = {}) {
         await validActivation(ctx);
         const id = String(request.params.campaignId), campaign = await getEntity(ctx, "campaigns", id);
         assertEntityAllowed(request, "campaigns", campaign);
+        requireCampaignSender(campaign);
         if (!["draft", "scheduled", "paused"].includes(String(campaign.status)))
             throw http(409, "Campaign cannot be queued");
         const audience = await resolveCampaignAudience(audienceRepository, await installationScope(db), {
@@ -2477,6 +2488,7 @@ export function createCampaignsRouter(options = {}) {
         await validActivation(ctx);
         const id = String(request.params.campaignId), campaign = await getEntity(ctx, "campaigns", id), template = await getEntity(ctx, "templates", String(campaign.templateId));
         assertEntityAllowed(request, "campaigns", campaign);
+        requireCampaignSender(campaign);
         const provider = await db.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1 AND body->>'enabled'='true'", [campaign.providerId]);
         if (!provider.rows[0]?.secret)
             throw http(409, "Campaign provider is not enabled and configured");
