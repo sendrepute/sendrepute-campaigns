@@ -41,9 +41,9 @@ never force-reset private settings or delete volumes.
 
 Alternatively, use a versioned release archive:
 
-Download the [v0.1.29 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.29/downloads/sendrepute-campaigns-0.1.29.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.29/downloads/sendrepute-campaigns-0.1.29.tar.gz)
-and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.29/downloads/sendrepute-campaigns-0.1.29-SHA256SUMS).
+Download the [v0.1.30 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.30/downloads/sendrepute-campaigns-0.1.30.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.30/downloads/sendrepute-campaigns-0.1.30.tar.gz)
+and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.30/downloads/sendrepute-campaigns-0.1.30-SHA256SUMS).
 These are repository downloads, not GitHub Release binary assets. GitHub's
 **Code → Download ZIP** provides a repository snapshot rather than the
 checksummed runtime release archive. Do not pipe a remote script into a shell.
@@ -81,6 +81,10 @@ setup; an older backend will still reject an HTTP Public URL even if you edit
 select Public IP + HTTP and confirm its warnings. This opt-in permits only the
 selected public IPv4 address and port for installation and session cookies,
 not arbitrary insecure origins. The Public URL must end in `/campaigns/`.
+The **Workspace name** in Settings appears on public subscribe and unsubscribe
+pages instead of the product name. Set it to a name recipients recognize; it
+does not change the Public URL.
+
 There is no default administrator account or password. On first boot the server
 generates a random setup token inside its protected data volume. Setup does
 **not** print the token automatically; when the app is ready, retrieve it
@@ -508,6 +512,13 @@ details as well. Review the saved draft after changing installation defaults:
 defaults do not silently rewrite a previously chosen sender. This UI is
 available in English and 13 non-English locales with AI-assisted (Gemini)
 translations.
+
+Brands expose only **name**, **From name**, **From email** and **Reply-to** in
+their editor. Selecting a brand explicitly fills the campaign's three sender
+fields from that brand; an existing draft's custom sender remains its own until
+you choose a brand or deliberately reset it. Review the sender before sending.
+Older stored logo/color columns are retained for backup compatibility but
+are not editable brand controls.
 
 ### Campaign sending threads and unsubscribe reporting
 

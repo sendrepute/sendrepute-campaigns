@@ -3267,11 +3267,17 @@ export function createCampaignsRouter(options = {}) {
         const signupUrl = publicSubscriptionUrl(String(installation.rows[0].settings.publicUrl), listId, subscriptionListToken(ctx.key, listId));
         response.json({ data: { signupUrl } });
     }));
-    router.use(["/public/unsubscribe", "/public/subscription-status"], (_request, response, next) => {
+    router.use(["/public/identity", "/public/unsubscribe", "/public/subscription-status"], (_request, response, next) => {
         response.set("Cache-Control", "no-store");
         response.set("Referrer-Policy", "no-referrer");
         next();
     });
+    router.get("/public/identity", wrap(async (_request, response) => {
+        const result = await db.query("SELECT settings->>'instanceName' AS instance_name FROM campaigns.installation WHERE singleton=true");
+        if (!result.rows[0])
+            throw http(503, "Not installed");
+        response.json({ data: { instanceName: result.rows[0].instance_name } });
+    }));
     router.get("/public/subscription-status", wrap(async (request, response) => {
         const token = String(request.query.token ?? "");
         const purpose = String(request.query.purpose ?? "");
@@ -3566,7 +3572,7 @@ export function createCampaignsRouter(options = {}) {
         const status = providerNameConflict ? 409 : providerNameMissing ? 400
             : error.status && error.status >= 400 && error.status <= 599 ? error.status : 500;
         if (request.path === "/public/subscribe" || request.path === "/public/subscribe/confirm" ||
-            request.path === "/public/unsubscribe" || request.path === "/public/subscription-status" ||
+            request.path === "/public/identity" || request.path === "/public/unsubscribe" || request.path === "/public/subscription-status" ||
             /^\/public\/lists\/[^/]+\/subscription-customization$/.test(request.path)) {
             // Log a bounded reason category only: no address, token, query string, or DB exception text.
             if (status >= 500) {

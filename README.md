@@ -65,14 +65,14 @@ Settings** to `https://YOUR_HOSTNAME/campaigns/`. If using Cloudflare, use
 [migration steps](docs/install.md#migrate-an-installed-public-ip-http-workspace-to-https)
 before changing a live installation.
 
-## Download v0.1.29
+## Download v0.1.30
 
-Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.29/downloads/sendrepute-campaigns-0.1.29.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.29/downloads/sendrepute-campaigns-0.1.29.tar.gz),
-verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.29/downloads/sendrepute-campaigns-0.1.29-SHA256SUMS),
+Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.30/downloads/sendrepute-campaigns-0.1.30.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.30/downloads/sendrepute-campaigns-0.1.30.tar.gz),
+verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.30/downloads/sendrepute-campaigns-0.1.30-SHA256SUMS),
 extract, and run `./setup.sh` there. These are repository downloads, **not**
 GitHub Release binary attachments; **Code → Download ZIP** is a different
-snapshot. See the [v0.1.29 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.29).
+snapshot. See the [v0.1.30 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.30).
 
 ## Update
 
