@@ -12,6 +12,28 @@ usage() {
 }
 interactive=false
 if [ -t 0 ]; then interactive=true; fi
+color=false
+if [ -t 1 ] && [ -z "${NO_COLOR+x}" ] && [ "${TERM:-dumb}" != dumb ]; then color=true; fi
+if [ "$color" = true ]; then
+  bold=$(printf '\033[1m')
+  blue=$(printf '\033[36m')
+  yellow=$(printf '\033[33m')
+  reset=$(printf '\033[0m')
+else bold= blue= yellow= reset=; fi
+header() {
+  say ''
+  printf '%s  SENDREPUTE CAMPAIGNS  |  SELF-HOST SETUP%s\n' "$bold" "$reset"
+  say '  ------------------------------------------------'
+  say '  Your settings and secrets stay on this server.'
+  say ''
+}
+stage() {
+  say ''
+  printf '%s  [%s/4] %s%s\n' "$blue" "$1" "$2" "$reset"
+  say '  ------------------------------------------------'
+}
+note() { printf '%s  %s%s\n' "$yellow" "$*" "$reset"; }
+panel_line() { printf '  %s\n' "$*"; }
 mode= host= accept_http=false confirm_change=false install_docker=false wait_seconds=120
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -39,8 +61,14 @@ ask() {
 }
 confirm() {
   if [ "$interactive" = true ]; then
-    ask "$1 Type yes to continue: "
-    [ "$answer" = yes ] || die 'Not confirmed; no changes made'
+    while :; do
+      ask "  $1 Type yes or no: "
+      case "$answer" in
+        yes) return 0 ;;
+        no) die 'Not confirmed; no changes made' ;;
+        *) note 'Please enter yes or no.' ;;
+      esac
+    done
   else
     die "$2"
   fi
@@ -100,6 +128,8 @@ read_key() {
   ' .env || die "Invalid .env assignment for $1; correct it manually (no file changed)"
 }
 
+header
+stage 1 'Checking Docker and this server'
 # Snap Docker can fail at AppArmor/no-new-privileges transitions even when
 # docker info and postgres appear healthy. Do not migrate or delete its data.
 if command -v docker >/dev/null 2>&1; then
@@ -147,6 +177,7 @@ case "$root" in
   /var/snap/*|/snap/*) die 'Snap Docker data root detected. Stop here: back up credentials and volumes, then plan a manual migration to Ubuntu docker.io. Do not remove Snap or delete volumes automatically.' ;;
 esac
 docker_cmd compose version >/dev/null 2>&1 || die 'Docker Compose v2 unavailable. Install the Ubuntu docker-compose-v2 package; no settings changed.'
+say '  Docker Engine, Compose v2 and the daemon are available.'
 
 existing=false
 if [ -e .env ]; then
@@ -186,17 +217,30 @@ if [ "$existing" = true ]; then
     fi
   fi
 fi
+stage 2 'Choosing how to access Campaigns'
 if [ -z "$mode" ]; then
   if [ "$interactive" != true ]; then die 'Unattended use requires --mode (and --host for public modes)'; fi
   if [ "$existing" = true ]; then
     say 'Existing configuration found. Resume preserves the exposure and all .env contents.'
-    ask 'Choose [R]esume (default), [L]ocal, [H]TTPS domain, or [P]ublic HTTP IP: '
-    case "$answer" in ''|r|R) mode=resume ;; l|L) mode=local ;; h|H) mode=https ;; p|P) mode=http ;; *) die 'Invalid choice' ;; esac
   else
     say 'Recommended: HTTPS with a DNS hostname pointing to this server (open TCP 80/443).'
-    ask 'Choose [H]TTPS, [L]ocal/SSH tunnel (default), or [P]ublic HTTP IP: '
-    case "$answer" in ''|l|L) mode=local ;; h|H) mode=https ;; p|P) mode=http ;; *) die 'Invalid choice' ;; esac
   fi
+  say '  1) HTTPS domain       Recommended; automatic certificate (requires DNS)'
+  say '  2) Public IP HTTP     Unencrypted; explicit confirmation required'
+  say '  3) Local / SSH tunnel No public application port'
+  if [ "$existing" = true ]; then say '  4) Resume             Keep existing settings (default)'
+  else say '  Press Enter for safe local mode (3).'; fi
+  while :; do
+    ask '  Select 1-3 (or H/P/L), 4/R if resuming: '
+    case "$answer" in
+      1|h|H) mode=https; break ;;
+      2|p|P) mode=http; break ;;
+      3|l|L) mode=local; break ;;
+      4|r|R) if [ "$existing" = true ]; then mode=resume; break; fi ;;
+      '') if [ "$existing" = true ]; then mode=resume; else mode=local; fi; break ;;
+    esac
+    note 'Please select a listed number or letter.'
+  done
 fi
 [ "$mode" != resume ] || [ "$existing" = true ] || die 'Nothing to resume: choose a mode'
 resuming=false
@@ -221,10 +265,14 @@ if [ "$mode" = resume ]; then
     mode=http
     [ "$port" != 80 ] || die 'Public HTTP port 80 is not supported by the exact-origin opt-in; choose another backend port'
     host=${host:-$old_public_host}
-    [ -n "$host" ] || {
+    if [ -z "$host" ]; then
       [ "$interactive" = true ] || die 'Existing public HTTP mode needs --host PUBLIC_IP to display its public URL'
-      ask 'Public IPv4 address for the existing HTTP URL: '; host=$answer
-    }
+      while :; do
+        ask '  Public IPv4 address for the existing HTTP URL: '
+        if valid_public_ipv4 "$answer"; then host=$answer; break; fi
+        note 'Enter a routable public IPv4 address (without scheme or port).'
+      done
+    fi
     valid_public_ipv4 "$host" || die 'Public HTTP requires a routable public IPv4 address'
     [ "$old_insecure_origin" = "http://$host:$port" ] ||
       die 'Existing public HTTP origin is missing or inconsistent. Use --mode http --host PUBLIC_IP --accept-http --confirm-change to opt in explicitly.'
@@ -243,7 +291,11 @@ else
     https)
       if [ -z "$host" ]; then
         [ "$interactive" = true ] || die 'HTTPS requires --host DNS_NAME'
-        ask 'Public DNS hostname (no scheme or port): '; host=$answer
+        while :; do
+          ask '  Public DNS hostname (no scheme or port): '
+          if valid_domain "$answer"; then host=$answer; break; fi
+          note 'Enter a valid public DNS hostname (not an IP address or reserved domain).'
+        done
       fi
       valid_domain "$host" || die 'HTTPS requires a valid DNS hostname (not an IP address)'
       [ -z "$active_domain" ] || [ "$active_domain" = "$host" ] ||
@@ -253,17 +305,38 @@ else
       [ "$port" != 80 ] || die 'Public HTTP port 80 is not supported by the exact-origin opt-in; choose another backend port'
       if [ -z "$host" ]; then
         [ "$interactive" = true ] || die 'Public HTTP requires --host PUBLIC_IP'
-        ask 'Public IPv4 address (no scheme or port): '; host=$answer
+        while :; do
+          ask '  Public IPv4 address (no scheme or port): '
+          if valid_public_ipv4 "$answer"; then host=$answer; break; fi
+          note 'Enter a routable public IPv4 address (without scheme or port).'
+        done
       fi
       valid_public_ipv4 "$host" || die 'Public HTTP requires a routable public IPv4 address'
-      say 'WARNING: Public HTTP is unencrypted. Login, setup and API credentials can be exposed in transit.'
-      if [ "$accept_http" != true ]; then confirm 'Expose the application over unencrypted HTTP?' 'Public HTTP requires --accept-http'; fi
       bind=0.0.0.0 proxy=false domain= ;;
   esac
 fi
 case "$port" in ''|*[!0-9]*|0*) die 'Existing HTTP port is invalid' ;; esac
 [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || die 'Existing HTTP port is invalid'
 
+stage 3 'Reviewing settings and starting services'
+say '  Configuration review'
+case "$mode" in
+  local) say '  Access:      Local server / SSH tunnel' ;;
+  http) say "  Access:      Public IP HTTP at $host:$port" ;;
+  https) say "  Access:      HTTPS domain $domain" ;;
+esac
+say "  Backend:     $bind:$port"
+say "  Trust proxy: $proxy"
+if [ "$existing" = true ]; then say '  Data:        Existing .env and volumes preserved'
+else say '  Data:        New private .env; volumes are never deleted'; fi
+if [ "$resuming" = true ]; then say '  Action:      Resume current exposure without changing .env'
+else say '  Action:      Start or update this access mode'; fi
+if [ "$mode" = http ]; then
+  note 'WARNING: Public HTTP is unencrypted. Login, setup and API credentials can be exposed in transit.'
+  if [ "$resuming" = false ] && [ "$accept_http" != true ]; then
+    confirm 'Expose the application over unencrypted HTTP?' 'Public HTTP requires --accept-http'
+  fi
+fi
 if [ "$existing" = true ] && [ "$resuming" = false ]; then
   if [ "${old_bind:-127.0.0.1}" != "$bind" ] || [ "${old_proxy:-false}" != "$proxy" ] || [ "$old_domain" != "$domain" ] || { [ "$mode" = http ] && { [ "$old_public_host" != "$host" ] || [ "$old_insecure_origin" != "http://$host:$port" ]; }; }; then
     say 'This changes the existing public exposure. Your database, secrets, and unknown .env keys will be preserved.'
@@ -319,7 +392,8 @@ if [ "$resuming" = false ] && { [ "$existing" = false ] || [ "${old_bind:-127.0.
 fi
 chmod 600 .env
 
-say "Starting Campaigns ($mode mode). This may take a few minutes on first build."
+say '  Building images and starting containers. First build may take several minutes.'
+say '  Compose output is hidden to avoid exposing credentials; this step waits for completion.'
 if [ "$mode" = https ]; then
   docker_cmd compose --profile https up -d --build >/dev/null 2>&1 ||
     die 'Compose startup failed. Check disk/build access and whether TCP 80/443 or the backend port is already in use; run docker compose --profile https ps (no secrets printed).'
@@ -327,6 +401,9 @@ else
   docker_cmd compose up -d --build >/dev/null 2>&1 ||
     die 'Compose startup failed. Check disk/build access and whether the backend port is already in use; run docker compose ps (no secrets printed).'
 fi
+say '  Compose finished starting services.'
+stage 4 'Checking application readiness'
+say "  Waiting up to $wait_seconds seconds for the Campaigns status endpoint inside its container."
 elapsed=0
 status=
 while [ "$elapsed" -lt "$wait_seconds" ]; do
@@ -351,36 +428,51 @@ if [ "$mode" != https ]; then
   docker_cmd compose --profile https stop https >/dev/null 2>&1 ||
     die 'Local app is healthy, but could not stop the previously enabled HTTPS proxy. Check docker compose --profile https ps; public exposure may remain active.'
 fi
+say ''
+say '  ================================================================'
+if [ "$status" = needs-setup ]; then say '  CAMPAIGNS READY FOR OWNER SETUP'
+else say '  CAMPAIGNS RUNNING'; fi
+say '  ================================================================'
 case "$mode" in
   local)
-    say "Local container health ready. Server-only URL: http://127.0.0.1:$port/campaigns/"
-    say "From your computer: ssh -o ExitOnForwardFailure=yes -N -L 18080:127.0.0.1:$port USER@YOUR_SERVER_HOST"
+    say '  ACCESS'
+    panel_line "Local container health ready. Server-only URL: http://127.0.0.1:$port/campaigns/"
+    panel_line 'From your computer, run:'
+    panel_line "  ssh -o ExitOnForwardFailure=yes -N -L 18080:127.0.0.1:$port USER@YOUR_SERVER_HOST"
     if [ "$status" = needs-setup ]; then
-      say 'Then open http://127.0.0.1:18080/campaigns/install on your computer.'
+      panel_line 'Then open http://127.0.0.1:18080/campaigns/install on your computer.'
     else
-      say 'Then open http://127.0.0.1:18080/campaigns/ on your computer.'
+      panel_line 'Then open http://127.0.0.1:18080/campaigns/ on your computer.'
     fi
-    say 'Wizard Public URL (when using this tunnel): http://127.0.0.1:18080/campaigns/' ;;
+    panel_line 'Wizard Public URL (when using this tunnel): http://127.0.0.1:18080/campaigns/' ;;
   http)
-    say "Local container health ready; public HTTP reachability not verified."
-    if [ "$status" = needs-setup ]; then say "Setup page (unencrypted): http://$host:$port/campaigns/install"
-    else say "App page (unencrypted): http://$host:$port/campaigns/"; fi
-    say "Wizard Public URL: http://$host:$port/campaigns/" ;;
+    say '  ACCESS'
+    panel_line 'WARNING: Public HTTP is unencrypted; login and API credentials are exposed in transit.'
+    panel_line 'Local container health ready; public HTTP reachability not verified.'
+    if [ "$status" = needs-setup ]; then panel_line "Setup page (unencrypted): http://$host:$port/campaigns/install"
+    else panel_line "App page (unencrypted): http://$host:$port/campaigns/"; fi
+    panel_line "Wizard Public URL: http://$host:$port/campaigns/" ;;
   https)
+    say '  ACCESS'
     if [ -n "$active_domain" ]; then
-      say "Local container health ready. Existing HTTPS site is externally unverified: check its TLS certificate, DNS and TCP 80/443."
+      panel_line 'Local container health ready. Existing HTTPS site is externally unverified.'
+      panel_line 'Check its TLS certificate, DNS and TCP 80/443 from outside this server.'
     else
-      say "Local container health ready. HTTPS certificate/ACME is pending and externally unverified: check DNS and TCP 80/443."
+      panel_line 'Local container health ready. HTTPS certificate/ACME is pending and externally unverified.'
+      panel_line 'Check DNS and TCP 80/443 from outside this server.'
     fi
-    if [ "$status" = needs-setup ]; then say "Setup page (unverified): https://$domain/campaigns/install"
-    else say "App page (unverified): https://$domain/campaigns/"; fi
-    say "Wizard Public URL: https://$domain/campaigns/"
-    say 'Do not treat local container health as proof of public HTTPS reachability.' ;;
+    if [ "$status" = needs-setup ]; then panel_line "Setup page (unverified): https://$domain/campaigns/install"
+    else panel_line "App page (unverified): https://$domain/campaigns/"; fi
+    panel_line "Wizard Public URL: https://$domain/campaigns/"
+    panel_line 'Do not treat local container health as proof of public HTTPS reachability.' ;;
 esac
+say ''
+say '  NEXT STEP'
 if [ "$status" = needs-setup ]; then
-  say 'Initial owner setup is still needed. Retrieve the one-time token only when ready:'
-  say '  sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token'
-  say 'If your Docker account does not require sudo, omit sudo. Never include the token in a URL or share it.'
+  panel_line 'Initial owner setup is still needed. Retrieve the one-time token only when ready:'
+  panel_line '  sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token'
+  panel_line 'If your Docker account does not require sudo, omit sudo. Never include the token in a URL or share it.'
 else
-  say 'Owner setup is already complete; no setup token is needed.'
+  panel_line 'Owner setup is already complete; no setup token is needed.'
 fi
+say '  ================================================================'
