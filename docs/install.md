@@ -108,6 +108,165 @@ that the site works externally. From a separate network, open the exact HTTPS
 installation URL, inspect the trusted certificate and test public links through
 the proxy before sending mail. DNS pointing to the server alone is not enough.
 
+## Guided setup command cookbook
+
+Run `./setup.sh` **on your Ubuntu VPS, from inside the cloned or extracted
+`sendrepute-campaigns` directory**, not in a terminal on your local computer.
+The [fresh Ubuntu clone sequence](#guided-docker-quickstart) is only for a new
+installation. An existing installation must preserve its `.env`, PostgreSQL
+and application volumes, encryption key, and backups; never clone over it,
+force-reset a changed repository, or run `docker compose down -v`. Setup reads
+existing settings and asks before changing exposure. It does not configure
+DNS, set your installed workspace's saved Public URL, or prove external TLS.
+
+### New installation with a public HTTPS hostname
+
+Point the exact DNS hostname you own to the VPS public IPv4 with an `A` record;
+publish `AAAA` only if inbound IPv6 works. Allow TCP 80/443 through cloud and
+host firewalls (and NAT forwarding if applicable), and make sure neither port
+is occupied by another service. On the VPS, after cloning/extracting:
+
+```sh
+./setup.sh --mode https --host campaigns.sendrepute.com
+```
+
+Replace `campaigns.sendrepute.com` with **your actual hostname**.
+`campaign.sendrepute.com` and `campaigns.sendrepute.com` are different DNS
+records. `--host` takes only a DNS name, not `https://`, a port, or a path.
+This mode starts the included Caddy `https` Compose profile in front of the
+backend, which stays bound to host loopback. DNS only resolves a name; it does
+**not** forward 443 to the app's port 8080. If using Cloudflare's proxy, set
+its origin SSL/TLS mode to **Full (strict)**, never Flexible. ACME still needs
+reachable ports and working DNS; confirm the actual trusted certificate and
+HTTPS URL **from another network**. For the new owner, open
+`https://YOUR_HOSTNAME/campaigns/install` and enter
+`https://YOUR_HOSTNAME/campaigns/` as the wizard Public URL, with the trailing
+slash.
+
+### Migrate an installed public-IP HTTP workspace to HTTPS
+
+Back up your database, application data/encryption key and private `.env`
+first. Arrange the DNS, HTTPS ports, firewall, NAT and Cloudflare Full
+(strict) prerequisites above. From the **existing project directory on the
+VPS**, run:
+
+```sh
+./setup.sh --mode https --host campaigns.sendrepute.com
+```
+
+Replace the example hostname with the one whose DNS you actually configured.
+When changing existing exposure, interactive setup reviews the change and
+asks you to type `yes`; `--confirm-change` is only for deliberate unattended
+authorization. It preserves existing secrets and volumes, starts Caddy and
+binds the backend to loopback; expect a brief interruption while services
+reconfigure. **An already installed workspace must separately change its
+saved Public URL** in **Workspace Settings → Public URL** to
+`https://YOUR_HOSTNAME/campaigns/` after external HTTPS works. Running setup
+does not rewrite the database setting or links already sent in email; keep
+old link routes reachable as necessary and test signup/unsubscribe/public
+links before sending. An installed workspace does not need a second owner
+setup token.
+
+### Public-IP HTTP (unencrypted) or local-only access
+
+Direct IPv4 HTTP requires a routable public IPv4 address, firewall/NAT access
+to the selected backend port (default 8080) and **explicit consent**:
+
+```sh
+./setup.sh --mode http --host YOUR_PUBLIC_IP
+```
+
+Replace `YOUR_PUBLIC_IP` with your actual public IPv4 (no scheme or port).
+Interactive setup asks you to acknowledge unencrypted HTTP and, if applicable,
+confirm the change in existing exposure. Passwords, setup tokens and sessions
+can be intercepted: **do not use this as secure production access**. On a new
+install, open `http://YOUR_PUBLIC_IP:8080/campaigns/install` and enter
+`http://YOUR_PUBLIC_IP:8080/campaigns/` in the wizard, replacing the IP. Use
+HTTPS whenever possible.
+
+For server-only access, run the following **on the VPS**:
+
+```sh
+./setup.sh --mode local
+```
+
+Then, **on your own computer** (not the VPS), open a trusted SSH tunnel:
+
+```sh
+ssh -o ExitOnForwardFailure=yes -N -L 18080:127.0.0.1:8080 USER@YOUR_SERVER_HOST
+```
+
+Replace `USER` and `YOUR_SERVER_HOST`. On that computer, visit
+`http://127.0.0.1:18080/campaigns/install` for a new installation (or
+`http://127.0.0.1:18080/campaigns/` if already installed). The wizard Public
+URL when using this tunnel is `http://127.0.0.1:18080/campaigns/`; `localhost`
+on your computer is not the VPS.
+
+### Resume, upgrade and diagnostics
+
+To keep an already initialized installation's access mode and settings, run
+this **in its project directory on the VPS**:
+
+```sh
+./setup.sh --mode resume
+```
+
+For an existing Git clone upgrade, first back up PostgreSQL, application
+data/encryption key and `.env`, then in that **existing clone**:
+
+```sh
+git status --short
+git pull --ff-only
+./setup.sh --mode resume
+```
+
+If pull refuses due to local edits, especially to `compose.yaml`, preserve
+and reconcile them; do not overwrite `.env` or reset/delete volumes. Keep the
+same Compose project and database; do not run old and new copies concurrently.
+On an archive upgrade, extract into a **new directory**, verify the checksum,
+carry over the same private `.env` and project/volume configuration, stop the
+old service before starting the new one, then resume setup there. If changing
+to HTTPS as part of an upgrade, choose the HTTPS migration command above
+instead of `--mode resume`.
+
+From the project directory, these commands inspect services **without
+printing the one-time setup token**:
+
+```sh
+docker compose --profile https ps
+docker compose --profile https logs --tail=100 campaigns https postgres
+```
+
+If Docker requires privilege, use `sudo docker compose` instead. Logs can
+still contain hostnames, addresses or sensitive values: redact before sharing.
+On your **own computer**, check the actual HTTPS address and trusted
+certificate with a browser; local health and `ps` do not prove ACME success.
+Retrieve the one-time token **only for a new, uninstalled owner**, explicitly
+on the VPS with the `docker compose exec campaigns cat ...` command above;
+never paste the token, `.env` or unredacted logs into a support message.
+
+### All supported setup flags
+
+| Flag | Meaning |
+| --- | --- |
+| `--mode local\|http\|https\|resume` | Local server/SSH tunnel, public-IP HTTP, HTTPS DNS hostname, or preserve an **existing** `.env` configuration. Interactive `./setup.sh` asks which mode to use. |
+| `--host HOST` | DNS hostname with `--mode https`, routable IPv4 with `--mode http`; no URL scheme, port or path. For `--mode resume`, only a previously configured public-HTTP mode may take a host. |
+| `--accept-http` | Explicitly acknowledges the unencrypted HTTP warning for unattended `--mode http` changes. Interactive setup instead asks for confirmation. |
+| `--confirm-change` | Explicitly authorizes changing an existing installation's exposure unattended. Interactive setup instead asks; this does not bypass HTTPS DNS/certificate checks. |
+| `--install-docker` | Explicit authorization to install Ubuntu `docker.io` and `docker-compose-v2` **only if Docker is missing** on Ubuntu 24.04/26.04; interactive setup asks first. Never removes Snap Docker, old packages or volumes. |
+| `--wait-seconds 1..600` | Container readiness wait in seconds; default 120. Not a TLS/ACME external verification timeout. |
+| `--help`, `-h` | Print setup usage without starting installation. |
+
+Unattended examples must include all applicable explicit consent flags: a
+fresh Ubuntu host missing Docker can use
+`./setup.sh --mode https --host YOUR_HOSTNAME --install-docker`; a deliberate
+existing HTTP-to-HTTPS change can use
+`./setup.sh --mode https --host YOUR_HOSTNAME --confirm-change`; and an
+existing-exposure change to unencrypted HTTP requires
+`./setup.sh --mode http --host YOUR_PUBLIC_IP --accept-http --confirm-change`.
+Do not include these authorization flags without the corresponding informed
+decision. `--help` shows the authoritative parser usage.
+
 ## Manual Docker setup (advanced)
 
 ### Install Docker Engine on a fresh Ubuntu server
