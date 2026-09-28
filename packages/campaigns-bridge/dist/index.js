@@ -41,6 +41,8 @@ export const operationCapabilities = {
     customerQuoteManualClassificationEdit: { method: "POST", path: "/v1/classify/edit/quote", scope: "classify", billable: false },
     customerClassifyEmail: { method: "POST", path: "/v1/classify/edit", scope: "classify", billable: true, consent: "editQuote" },
     customerRewriteFlaggedTermsWithAi: { method: "POST", path: "/v1/rewrite", scope: "rewrite", billable: true, consent: "rewriteQuote" },
+    customerFinalizeAiRewrite: { method: "POST", path: "/v1/rewrite/finalize", scope: "rewrite", billable: false },
+    customerGetAiRewriteResult: { method: "GET", path: "/v1/rewrite/result/{requestId}", scope: "rewrite", billable: false },
     customerQuoteAiRewrite: { method: "POST", path: "/v1/rewrite/ai-quote", scope: "rewrite", billable: false },
     customerCreateAiEmailTemplate: { method: "POST", path: "/v1/email-builder/ai-template", scope: "ai:generate", billable: true, consent: "expectedPrice" },
     customerGetPaidResult: { method: "GET", path: "/customer/paid-results/{recoveryId}", scope: "builder:read", billable: false },
@@ -430,11 +432,51 @@ export class SendReputeClient {
         }
     }
     /** Authenticated read-only recovery through the same pinned SDK transport. */
+    async getPaidIdentity() {
+        const result = await this.#paidSettlementRequest("identity");
+        // Both central runtimes publish this marker only when the authenticated,
+        // credential-scoped settlement read and resolution contract is available.
+        // An older central may expose identity without durable settlement. Never
+        // send a charge merely because the local bridge has recovery methods.
+        if (typeof result.accountId !== "string" || !result.accountId || typeof result.credentialId !== "string" || !result.credentialId ||
+            result.settlementContract !== 1) {
+            throw new CampaignsBridgeError("SETTLEMENT_UNAVAILABLE", "Authenticated paid identity and settlement contract unavailable; no paid request sent", { status: 409 });
+        }
+        return { accountId: result.accountId, credentialId: result.credentialId };
+    }
+    async resolvePaidResult(recoveryId, reason) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recoveryId) ||
+            typeof reason !== "string" || !reason.trim() || reason.length > 500)
+            throw new TypeError("Valid recovery identity and resolution reason required");
+        return this.#paidSettlementRequest(`${recoveryId}/resolve`, { action: "resolve", reason: reason.trim() });
+    }
+    async #paidSettlementRequest(path, body) {
+        const response = await this.#fetch(new URL(`customer/paid-results/${path}`, this.#baseUrl), {
+            method: body ? "POST" : "GET", headers: { accept: "application/json", authorization: `Bearer ${this.#secret}`, ...(body ? { "content-type": "application/json" } : {}) },
+            ...(body ? { body: JSON.stringify(body) } : {}), redirect: "manual", signal: AbortSignal.timeout(this.#timeoutMs),
+        });
+        if (response.status >= 300 && response.status < 400)
+            throw new CampaignsBridgeError("REDIRECT_REFUSED", "SendRepute redirect refused", { status: 502 });
+        const result = await boundedJson(response);
+        if (response.status === 404) {
+            const upstream = result?.error;
+            const code = upstream && typeof upstream === "object" && !Array.isArray(upstream)
+                ? upstream.code : undefined;
+            if (code === "NOT_FOUND")
+                throw new CampaignsBridgeError("CENTRAL_RECEIPT_NOT_FOUND", "No central paid receipt matches this exact account, credential and purchase reference. Payment outcome remains uncertain; do not purchase again.", { status: 409 });
+            throw new CampaignsBridgeError("CENTRAL_SETTLEMENT_ROUTE_UNAVAILABLE", "The central paid settlement endpoint is unavailable. Payment protection remains in place; do not purchase again.", { status: 503 });
+        }
+        if (!response.ok)
+            throw new CampaignsBridgeError("SETTLEMENT_UNAVAILABLE", "Authoritative settlement unavailable; payment protection retained", { status: response.status });
+        if (!result)
+            throw new CampaignsBridgeError("INVALID_RESPONSE", "Settlement response missing", { status: 502 });
+        return result;
+    }
     async getPaidResult(recoveryId) {
         if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(recoveryId)) {
             throw new CampaignsBridgeError("INVALID_RECOVERY_ID", "Recovery identity must be a UUID", { status: 400 });
         }
-        return this.#request("customerGetPaidResult", { path: { recoveryId } });
+        return await this.#paidSettlementRequest(recoveryId);
     }
     async #request(operation, input) {
         const centralInput = centralOperationInput(operation, input ?? {});

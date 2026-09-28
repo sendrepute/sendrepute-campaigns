@@ -9,6 +9,7 @@ export class AudienceValidationError extends Error {
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+export const RESERVED_MERGE_KEYS = new Set(["email", "firstName", "lastName", "name", "unsubscribe_url", "constructor", "prototype", "__proto__", "trackingOptOut", "trackingEnabled"]);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z)?$/;
 const MAX_NODES = 100;
@@ -32,8 +33,8 @@ export function validateCustomFieldDefinitions(input) {
         const key = raw.key;
         const label = raw.label;
         const type = raw.type;
-        if (typeof key !== "string" || !KEY.test(key))
-            throw new AudienceValidationError(`custom field definition ${index} has an invalid key`);
+        if (typeof key !== "string" || !KEY.test(key) || RESERVED_MERGE_KEYS.has(key))
+            throw new AudienceValidationError(`custom field definition ${index} has an invalid or reserved key`);
         if (keys.has(key))
             throw new AudienceValidationError(`duplicate custom field key: ${key}`);
         keys.add(key);
@@ -67,9 +68,14 @@ export function validateCustomValues(input, definitions) {
         throw new AudienceValidationError("custom values must be an object");
     const byKey = new Map(definitions.map((definition) => [definition.key, definition]));
     for (const key of Object.keys(input))
-        if (!byKey.has(key))
+        if (!byKey.has(key) && key !== "name")
             throw new AudienceValidationError(`unknown custom field: ${key}`);
     const result = {};
+    if (own(input, "name")) {
+        if (typeof input.name !== "string" || input.name.length > 10_000)
+            throw new AudienceValidationError("name must be a string of at most 10000 characters");
+        result.name = input.name;
+    }
     for (const definition of definitions) {
         const value = input[definition.key];
         if (value === undefined) {
@@ -508,11 +514,49 @@ function validateIds(values, label) {
     }
     return [...new Set(values)];
 }
+export function subscriberMergeVariables(subscriber, unsubscribeUrl) {
+    const metadata = plainObject(subscriber.metadata) ? subscriber.metadata : {};
+    const variables = Object.create(null);
+    for (const [key, value] of Object.entries(metadata)) {
+        if (KEY.test(key) && !RESERVED_MERGE_KEYS.has(key))
+            variables[key] = value;
+    }
+    variables.email = subscriber.email;
+    variables.firstName = subscriber.firstName ?? "";
+    variables.lastName = subscriber.lastName ?? "";
+    variables.name = typeof metadata.name === "string" ? metadata.name : [subscriber.firstName, subscriber.lastName].filter(Boolean).join(" ");
+    if (unsubscribeUrl !== undefined)
+        variables.unsubscribe_url = unsubscribeUrl;
+    return variables;
+}
 export function renderMergeVariables(template, variables, options) {
     if (typeof template !== "string" || template.length > 2_000_000)
         throw new AudienceValidationError("template must be a string no larger than 2 MB");
     if (!plainObject(variables))
         throw new AudienceValidationError("variables must be an object");
+    if (options.format === "html") {
+        // Only variable-bearing hrefs are checked here. A dynamic destination must
+        // be a complete, absolute web URL, not a scheme or fragment injection.
+        for (const match of template.matchAll(/\bhref\s*=\s*(?:(["'])(.*?)\1|([^\s>]+))/gi)) {
+            const raw = match[2] ?? match[3] ?? "";
+            if (!/\{\{/.test(raw))
+                continue;
+            if (/^\{\{\s*unsubscribe_url\s*\}\}$/.test(raw.trim()) && variables.unsubscribe_url === "{{unsubscribe_url}}")
+                continue;
+            const destination = renderMergeVariables(raw, variables, { ...options, format: "text" });
+            if (/\{\{|\}\}|[\u0000-\u0020\u007f]/.test(destination))
+                throw new AudienceValidationError("merge href must be an absolute http or https URL");
+            let parsed;
+            try {
+                parsed = new URL(destination);
+            }
+            catch {
+                throw new AudienceValidationError("merge href must be an absolute http or https URL");
+            }
+            if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname)
+                throw new AudienceValidationError("merge href must be an absolute http or https URL");
+        }
+    }
     return template.replace(/\{\{\s*([A-Za-z][A-Za-z0-9_.-]{0,63})\s*\}\}/g, (token, key) => {
         if (!own(variables, key) || variables[key] === undefined || variables[key] === null) {
             if (options.missing === "error")

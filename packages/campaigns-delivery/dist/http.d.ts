@@ -1,5 +1,5 @@
 import { type DeliveryOptions } from "./types.js";
-export declare function boundedFetch(url: string, init: RequestInit, options: DeliveryOptions, operation: "send" | "verify"): Promise<{
+export declare function boundedFetch(url: string, init: RequestInit, options: DeliveryOptions, operation: "send" | "verify", parseJson?: (text: string) => unknown): Promise<{
     status: number;
     ok: boolean;
     json: unknown;

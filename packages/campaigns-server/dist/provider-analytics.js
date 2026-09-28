@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import { ProviderAnalyticsError, normalizeProviderAnalyticsWebhook, providerAnalyticsCapability, providerAnalyticsEventKey, syncProviderAnalytics, } from "@workspace/campaigns-delivery";
+import { ProviderAnalyticsError, normalizeProviderAnalyticsWebhook, providerAnalyticsCapability, providerAnalyticsEventKey, reconcileMailjetMessage, syncProviderAnalytics, } from "@workspace/campaigns-delivery";
 import { appendDeliveryEvent, refreshCampaignDeliveryStatistics } from "./delivery-reliability.js";
 function credentials(secret) {
     try {
@@ -56,9 +56,12 @@ export async function ingestProviderAnalyticsEvents(db, providerId, events, sour
     for (const value of events.slice(0, 500)) {
         const key = providerAnalyticsEventKey(value);
         const job = (await db.query(`SELECT id,campaign_id,recipient_id FROM campaigns.jobs
-       WHERE provider_message_id=$2
-         AND (snapshot->>'providerId'=$1 OR snapshot->>'provider_id'=$1)
+       WHERE provider_message_id=$2 AND state='sent'
+         AND (snapshot->'campaign'->>'providerId'=$1 OR snapshot->>'providerId'=$1 OR snapshot->>'provider_id'=$1)
        ORDER BY created_at DESC LIMIT 1`, [providerId, value.providerMessageId])).rows[0];
+        // Do not attribute unsolicited provider IDs to this installation.
+        if (!job)
+            continue;
         const inserted = await db.query(`INSERT INTO campaigns.provider_analytics_events
        (id,provider_id,job_id,campaign_id,provider_message_id,event_type,occurred_at,
         recipient,link,canonical_fingerprint,provider_event_key,source,metadata)
@@ -98,16 +101,25 @@ export async function ingestProviderAnalyticsEvents(db, providerId, events, sour
     return { imported, duplicate, campaignIds: [...campaigns] };
 }
 export async function ingestProviderAnalyticsWebhook(db, providerId, providerType, authenticatedPayload) {
+    const normalized = normalizeProviderAnalyticsWebhook(providerType, authenticatedPayload);
+    if (!normalized.length)
+        return { imported: 0, duplicate: 0, campaignIds: [] };
     const state = (await db.query("SELECT enabled,track_opens,track_clicks FROM campaigns.provider_analytics_state WHERE provider_id=$1", [providerId])).rows[0];
     if (!state?.enabled)
         return { imported: 0, duplicate: 0, campaignIds: [] };
-    const events = normalizeProviderAnalyticsWebhook(providerType, authenticatedPayload).filter(value => (value.type !== "opened" || state.track_opens) && (value.type !== "clicked" || state.track_clicks));
+    const events = normalized.filter(value => (value.type !== "opened" || state.track_opens) && (value.type !== "clicked" || state.track_clicks));
     return ingestProviderAnalyticsEvents(db, providerId, events, "webhook");
 }
 function publicError(error) {
     if (error instanceof ProviderAnalyticsError)
         return { kind: error.kind, message: error.message.slice(0, 1000) };
-    return { kind: "provider", message: "Provider analytics sync failed" };
+    // PostgreSQL messages may include query text or stored data. Expose only its
+    // stable SQLSTATE and a local-storage action, never its raw error message.
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) {
+        return { kind: "provider", message: `Campaigns analytics database operation failed (PostgreSQL ${code}). Check the installed Campaigns schema and database permissions; no provider events were fabricated.` };
+    }
+    return { kind: "provider", message: "Provider analytics sync failed while reading provider history or saving local events. Check Campaigns server diagnostics; no synthetic events were recorded." };
 }
 // Match entity authorization: every assigned campaign list must be allowed.
 // Unknown/deleted campaigns and empty or malformed list assignments fail closed.
@@ -181,19 +193,23 @@ export function createProviderAnalyticsRouter(deps) {
         if (capability.availability === "webhook" || capability.availability === "unavailable") {
             throw deps.http(409, capability.reason ?? "Provider analytics polling is unavailable", "ANALYTICS_UNAVAILABLE");
         }
-        const ids = config.type === "resend" ? (await deps.db.query(`SELECT DISTINCT provider_message_id FROM campaigns.jobs
-       WHERE provider_message_id IS NOT NULL
-         AND (snapshot->>'providerId'=$1 OR snapshot->>'provider_id'=$1)
-       ORDER BY provider_message_id LIMIT 100`, [providerId])).rows.map(row => row.provider_message_id) : undefined;
         try {
-            const result = await (deps.sync ?? syncProviderAnalytics)(config, { cursor: state.cursor, limit: 100, providerMessageIds: ids }, deps.deliveryOptions);
+            const ids = config.type === "resend" || config.type === "mailjet" ? (await deps.db.query(`SELECT provider_message_id FROM campaigns.jobs
+        WHERE state='sent' AND provider_message_id IS NOT NULL
+          AND (snapshot->'campaign'->>'providerId'=$1 OR snapshot->>'providerId'=$1 OR snapshot->>'provider_id'=$1)
+        GROUP BY provider_message_id
+        ORDER BY max(created_at) DESC, provider_message_id DESC LIMIT 100`, [providerId])).rows.map(row => row.provider_message_id) : undefined;
+            const result = await (deps.sync ?? syncProviderAnalytics)(config, { cursor: state.cursor, limit: config.type === "mailjet" ? 20 : 100, providerMessageIds: ids }, deps.deliveryOptions);
             const selected = result.events.filter(value => (value.type !== "opened" || state.track_opens) && (value.type !== "clicked" || state.track_clicks));
             const ingested = await ingestProviderAnalyticsEvents(deps.db, providerId, selected, "poll");
+            const incomplete = config.type === "mailjet" && (result.missingMessageCount ?? 0) > 0;
+            const partialMessage = incomplete ? `Mailjet returned HTTP 404 for ${result.missingMessageCount} known message histories. Those IDs were skipped; older rounded IDs may not match Mailjet. Other events were imported; missing metrics remain unknown.` : null;
             await deps.db.query(`UPDATE campaigns.provider_analytics_state SET cursor=$2,last_sync_at=now(),
-         last_success_at=now(),last_error_kind=NULL,last_error=NULL,updated_at=now()
-         WHERE provider_id=$1`, [providerId, result.nextCursor]);
+          last_success_at=CASE WHEN $3::boolean THEN last_success_at ELSE now() END,
+          last_error_kind=$4,last_error=$5,updated_at=now()
+         WHERE provider_id=$1`, [providerId, result.nextCursor, incomplete, incomplete ? "provider" : null, partialMessage]);
             await deps.audit?.(request, "provider.analytics.sync", "provider", providerId, { imported: ingested.imported, duplicate: ingested.duplicate });
-            response.json({ data: { status: "available", imported: ingested.imported, duplicate: ingested.duplicate, nextCursor: result.nextCursor, hasMore: result.hasMore, error: null } });
+            response.json({ data: { status: incomplete ? "partial" : "available", imported: ingested.imported, duplicate: ingested.duplicate, nextCursor: result.nextCursor, hasMore: result.hasMore, error: incomplete ? { kind: "provider", message: partialMessage } : null } });
         }
         catch (error) {
             const safe = publicError(error);
@@ -202,6 +218,165 @@ export function createProviderAnalyticsRouter(deps) {
             response.status(safe.kind === "authentication" ? 401 : safe.kind === "permission" ? 403 : safe.kind === "rate_limited" ? 429 : 502)
                 .json({ data: { status: "error", imported: 0, duplicate: 0, nextCursor: state.cursor, hasMore: false, error: safe } });
         }
+    }));
+    router.post("/providers/:providerId/analytics/reconcile", deps.mutation, deps.need("provider-analytics:manage"), deps.wrap(async (request, response) => {
+        const providerId = String(request.params.providerId);
+        const body = request.body;
+        const jobIds = body?.jobIds;
+        if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(key => key !== "jobIds") ||
+            !Array.isArray(jobIds) || jobIds.length < 1 || jobIds.length > 5 ||
+            jobIds.some((id) => typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) ||
+            new Set(jobIds.map((id) => id.toLowerCase())).size !== jobIds.length) {
+            throw deps.http(400, "jobIds must contain 1 to 5 distinct UUIDs");
+        }
+        const provider = await read(providerId);
+        const state = (await deps.db.query("SELECT enabled,track_opens,track_clicks FROM campaigns.provider_analytics_state WHERE provider_id=$1", [providerId])).rows[0];
+        if (!state?.enabled)
+            throw deps.http(409, "Provider analytics is not enabled");
+        if (!provider.secret)
+            throw deps.http(409, "Provider credentials are not configured");
+        const config = providerAnalyticsConfig(provider.body, deps.decrypt(deps.credentialKey, provider.secret));
+        if (config.type !== "mailjet" || provider.body.transport === "smtp" || provider.body.metadata?.transport === "smtp") {
+            throw deps.http(409, "Reconciliation requires Mailjet API delivery");
+        }
+        if (providerAnalyticsCapability(config.type).availability === "unavailable")
+            throw deps.http(409, "Provider analytics is unavailable");
+        const results = [];
+        for (const jobId of jobIds) {
+            const found = (await deps.db.query(`SELECT j.id,j.provider_message_id FROM campaigns.jobs j
+         WHERE j.id=$1 AND j.state='sent' AND j.provider_message_id ~ '^[1-9][0-9]{0,19}$'
+           AND (j.snapshot->'campaign'->>'providerId'=$2 OR j.snapshot->>'providerId'=$2 OR j.snapshot->>'provider_id'=$2)
+           AND ($3::text[] IS NULL OR EXISTS (
+             SELECT 1 FROM campaigns.entities c WHERE c.kind='campaigns' AND c.id=j.campaign_id
+               AND jsonb_typeof(c.body->'listIds')='array'
+               AND jsonb_array_length(c.body->'listIds')>0
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(c.body->'listIds') assigned(id)
+                 WHERE assigned.id IS NULL OR NOT assigned.id=ANY($3::text[]))
+           ))`, [jobId, providerId, deps.restrictedLists(request)])).rows[0];
+            const previousMessageId = found?.provider_message_id ?? null;
+            const result = { jobId, status: "incomplete", previousMessageId, providerMessageId: null,
+                imported: 0, duplicate: 0, message: "" };
+            if (!found) {
+                result.message = "No accessible accepted Mailjet API job with a numeric message ID";
+            }
+            else {
+                // A durable provider-specific budget also bounds work across processes. Never
+                // consume the delivery rate limit, which is reserved for actual sends.
+                const budget = await deps.db.query(`INSERT INTO campaigns.public_rate_limits(fingerprint,used,reset_at)
+           VALUES($1,1,now()+interval '1 hour')
+           ON CONFLICT(fingerprint) DO UPDATE SET
+             used=CASE WHEN campaigns.public_rate_limits.reset_at<=now() THEN 1
+                       ELSE least(campaigns.public_rate_limits.used+1,11) END,
+             reset_at=CASE WHEN campaigns.public_rate_limits.reset_at<=now() THEN now()+interval '1 hour'
+                           ELSE campaigns.public_rate_limits.reset_at END
+           RETURNING used`, [`mailjet-reconcile:${providerId}`]);
+                if ((budget.rows[0]?.used ?? 11) > 10) {
+                    result.message = "Reconciliation limit reached (10 lookups per provider per hour)";
+                }
+                else if (activeMailjetReconciliations.has(providerId)) {
+                    result.message = "Another Mailjet reconciliation is in progress for this provider";
+                }
+                else {
+                    activeMailjetReconciliations.add(providerId);
+                    try {
+                        // Mailjet received the UUID verbatim as CustomID, not a numeric ID
+                        // reconstructed from a potentially rounded provider response.
+                        const boundedOptions = { ...deps.deliveryOptions,
+                            timeoutMs: Math.min(deps.deliveryOptions?.timeoutMs ?? 5000, 5000),
+                            maxResponseBytes: Math.min(deps.deliveryOptions?.maxResponseBytes ?? 262144, 262144) };
+                        const match = await (deps.reconcile ?? reconcileMailjetMessage)(config, { customId: found.id }, boundedOptions);
+                        if (match.status !== "matched") {
+                            result.status = match.status;
+                            result.message = match.status === "ambiguous" ? "Multiple Mailjet records have this CustomID; no correction made"
+                                : match.status === "no_match" ? "No Mailjet record has this CustomID (history may have expired)"
+                                    : "Mailjet lookup was incomplete; no correction made";
+                        }
+                        else if (!/^[1-9]\d{0,19}$/.test(match.providerMessageId ?? "")) {
+                            result.status = "incomplete";
+                            result.message = "No exact Mailjet message ID was available";
+                        }
+                        else {
+                            const exactId = match.providerMessageId;
+                            if (!deps.db.connect)
+                                throw new Error("Transactional database connection required for reconciliation");
+                            const tx = await deps.db.connect();
+                            let corrected = false;
+                            let unchanged = false;
+                            try {
+                                await tx.query("BEGIN");
+                                // Serialize repairs for this provider across processes so two jobs
+                                // cannot concurrently claim the same authoritative message ID.
+                                await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`mailjet-reconcile:${providerId}`]);
+                                const updated = await tx.query(`UPDATE campaigns.jobs j SET provider_message_id=$3,updated_at=now(),revision=revision+1
+                   WHERE j.id=$1 AND j.state='sent' AND j.provider_message_id IS NOT DISTINCT FROM $4 AND $3<>$4
+                     AND (j.snapshot->'campaign'->>'providerId'=$2 OR j.snapshot->>'providerId'=$2 OR j.snapshot->>'provider_id'=$2)
+                     AND NOT EXISTS (
+                       SELECT 1 FROM campaigns.jobs other WHERE other.id<>j.id AND other.state='sent'
+                         AND other.provider_message_id=$3
+                         AND (other.snapshot->'campaign'->>'providerId'=$2 OR other.snapshot->>'providerId'=$2 OR other.snapshot->>'provider_id'=$2)
+                     )
+                   RETURNING j.id`, [jobId, providerId, exactId, previousMessageId]);
+                                if (updated.rowCount === 1) {
+                                    const actor = request.user ? { id: request.user.id, name: request.user.name,
+                                        email: request.user.email, roleIds: request.user.roleIds } : null;
+                                    await tx.query(`INSERT INTO campaigns.audit(id,action,entity_type,entity_id,actor_id,actor,ip_address,metadata)
+                     VALUES($1,'provider.analytics.reconcile','job',$2,$3,$4,$5,$6)`, [randomUUID(), jobId, request.user?.id ?? null, actor, request.ip ?? null,
+                                        { providerId, previousMessageId, providerMessageId: exactId, status: "matched" }]);
+                                    corrected = true;
+                                }
+                                else if (exactId === previousMessageId) {
+                                    const existing = await tx.query(`SELECT j.id FROM campaigns.jobs j WHERE j.id=$1 AND j.state='sent' AND j.provider_message_id=$3
+                       AND (j.snapshot->'campaign'->>'providerId'=$2 OR j.snapshot->>'providerId'=$2 OR j.snapshot->>'provider_id'=$2)
+                       AND NOT EXISTS (SELECT 1 FROM campaigns.jobs other WHERE other.id<>j.id AND other.state='sent'
+                         AND other.provider_message_id=$3
+                         AND (other.snapshot->'campaign'->>'providerId'=$2 OR other.snapshot->>'providerId'=$2 OR other.snapshot->>'provider_id'=$2))`, [jobId, providerId, exactId]);
+                                    unchanged = existing.rowCount === 1;
+                                }
+                                await tx.query("COMMIT");
+                            }
+                            catch (error) {
+                                try {
+                                    await tx.query("ROLLBACK");
+                                }
+                                catch { /* preserve original failure */ }
+                                throw error;
+                            }
+                            finally {
+                                tx.release();
+                            }
+                            if (!corrected && !unchanged) {
+                                result.status = "ambiguous";
+                                result.message = "Job changed or exact message ID belongs to another accepted job; no correction made";
+                            }
+                            else {
+                                result.status = "matched";
+                                result.providerMessageId = exactId;
+                                const history = await (deps.sync ?? syncProviderAnalytics)(config, { providerMessageIds: [exactId], limit: 1 }, boundedOptions);
+                                const selected = history.events.filter(value => value.providerMessageId === exactId &&
+                                    (value.type !== "opened" || state.track_opens) && (value.type !== "clicked" || state.track_clicks));
+                                const ingested = await ingestProviderAnalyticsEvents(deps.db, providerId, selected, "poll");
+                                result.imported = ingested.imported;
+                                result.duplicate = ingested.duplicate;
+                                result.message = history.missingMessageCount ? "Corrected; Mailjet history is no longer available"
+                                    : "Corrected and available history imported";
+                            }
+                        }
+                    }
+                    catch (error) {
+                        result.status = result.providerMessageId ? "matched" : "incomplete";
+                        result.message = result.providerMessageId ? "Corrected, but history import failed: " + publicError(error).message
+                            : publicError(error).message;
+                    }
+                    finally {
+                        activeMailjetReconciliations.delete(providerId);
+                    }
+                }
+            }
+            await deps.audit?.(request, "provider.analytics.reconcile.attempt", "job", jobId, { providerId, status: result.status, previousMessageId, providerMessageId: result.providerMessageId,
+                imported: result.imported, duplicate: result.duplicate });
+            results.push(result);
+        }
+        response.json({ data: { results } });
     }));
     router.get("/providers/:providerId/analytics/events", deps.need("read"), deps.wrap(async (request, response) => {
         const providerId = String(request.params.providerId);
@@ -222,6 +397,8 @@ export function createProviderAnalyticsRouter(deps) {
         const campaignId = request.query.campaignId ? String(request.query.campaignId) : null;
         const providerId = request.query.providerId ? String(request.query.providerId) : null;
         const result = await deps.db.query(`SELECT e.provider_id "providerId",e.campaign_id "campaignId",
+       NULLIF(btrim(p.body->>'name'),'') "providerName",
+       max(e.occurred_at) "lastActivityAt",
        count(DISTINCT job_id) FILTER(WHERE event_type='delivered')::int delivered,
        count(DISTINCT job_id) FILTER(WHERE event_type='opened')::int opened,
        count(DISTINCT job_id) FILTER(WHERE event_type='clicked')::int clicked,
@@ -231,23 +408,24 @@ export function createProviderAnalyticsRouter(deps) {
        count(*) OVER()::int "_total",p.body->>'type' "providerType",
        s.track_opens "trackOpens",s.track_clicks "trackClicks"
        FROM campaigns.provider_analytics_events e
-       JOIN campaigns.entities p ON p.kind='providers' AND p.id=e.provider_id
-       JOIN campaigns.provider_analytics_state s ON s.provider_id=e.provider_id
+       LEFT JOIN campaigns.entities p ON p.kind='providers' AND p.id=e.provider_id
+       LEFT JOIN campaigns.provider_analytics_state s ON s.provider_id=e.provider_id
        WHERE ($1::uuid IS NULL OR e.campaign_id=$1) AND ($2::uuid IS NULL OR e.provider_id=$2)
          AND ${analyticsListScope}
        GROUP BY e.provider_id,e.campaign_id,p.body,s.track_opens,s.track_clicks
-       ORDER BY e.campaign_id DESC NULLS LAST,e.provider_id LIMIT $3 OFFSET $4`, [campaignId, providerId, page.pageSize, page.offset, deps.restrictedLists(request)]);
+       ORDER BY max(e.occurred_at) DESC NULLS LAST,e.provider_id,e.campaign_id ASC NULLS LAST LIMIT $3 OFFSET $4`, [campaignId, providerId, page.pageSize, page.offset, deps.restrictedLists(request)]);
         const total = Number(result.rows[0]?._total ?? 0);
         const data = result.rows.map(({ _total, providerType, trackOpens, trackClicks, ...row }) => {
-            const capability = providerAnalyticsCapability(providerType);
+            const capability = providerType ? providerAnalyticsCapability(providerType) : null;
             return Object.fromEntries(Object.entries(row).map(([key, value]) => {
                 const metric = key === "hardBounced" ? "hard_bounce" : key === "softBounced" ? "soft_bounce" : key === "complained" ? "complained" : key;
                 const disabled = (key === "opened" && !trackOpens) || (key === "clicked" && !trackClicks);
-                return [key, disabled || (key in capability.metrics && !capability.metrics[metric]) ? null : value];
+                return [key, disabled || (capability && key in capability.metrics && !capability.metrics[metric]) ? null : value];
             }));
         });
         response.json({ data, meta: { page: page.page, pageSize: page.pageSize, total } });
     }));
     return router;
 }
+const activeMailjetReconciliations = new Set();
 //# sourceMappingURL=provider-analytics.js.map

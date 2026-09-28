@@ -1,4 +1,5 @@
 import { boundedFetch, httpFailure, safeProviderError } from "./http.js";
+import { parseMailjetJson } from "./mailjet-json.js";
 import { DeliveryError } from "./types.js";
 import { sendSmtp, verifySmtp } from "./smtp.js";
 const basic = (username, password) => `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
@@ -20,7 +21,7 @@ export async function sendMailjet(config, message, options) {
                 ...(message.headers ? { Headers: message.headers } : {}),
                 CustomID: message.id.slice(0, 255),
             }] });
-    const response = await boundedFetch("https://api.mailjet.com/v3.1/send", { method: "POST", headers: { authorization: basic(config.apiKey, config.secretKey), "content-type": "application/json" }, body }, options, "send");
+    const response = await boundedFetch("https://api.mailjet.com/v3.1/send", { method: "POST", headers: { authorization: basic(config.apiKey, config.secretKey), "content-type": "application/json" }, body }, options, "send", parseMailjetJson);
     if (!response.ok) {
         const failure = httpFailure(response.status);
         throw new DeliveryError(safeProviderError(response.status, response.json), "MAILJET_REJECTED", failure.state, response.status, failure.retryable);

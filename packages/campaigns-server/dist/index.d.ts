@@ -95,7 +95,9 @@ export declare function resolveCampaignAudience(repository: AudienceRepository, 
         excludeSegmentIds: string[];
     };
 }>;
-export declare function createCampaignsRouter(options?: CampaignsRouterOptions): Router;
+export declare function createCampaignsRouter(options?: CampaignsRouterOptions): Router & {
+    publicTrackingRouter: Router;
+};
 export interface CampaignsWorkerOptions extends CampaignsRouterOptions {
     batchSize?: number;
     staleSendingMinutes?: number;
@@ -107,6 +109,7 @@ export interface CampaignsWorkerSchedulerOptions extends CampaignsWorkerOptions 
 export interface CampaignsWorkerScheduler {
     stop(): Promise<void>;
 }
+export declare function campaignsWorkerDatabaseUrl(options?: Pick<CampaignsWorkerOptions, "databaseUrl">, environment?: NodeJS.ProcessEnv): string | undefined;
 export declare function startCampaignsWorker(options?: CampaignsWorkerSchedulerOptions): CampaignsWorkerScheduler;
 export declare function runCampaignsWorker(options?: CampaignsWorkerOptions): Promise<{
     claimed: number;

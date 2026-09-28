@@ -161,6 +161,64 @@ export function validateStoredDestination(value) {
     }
     return destination.toString();
 }
+// Decode only the entities needed to recover URL attributes. Never decode the
+// surrounding markup or regenerate tags: the message HTML remains unchanged.
+function decodeHref(value) {
+    return value.replace(/&(#(?:x[0-9a-f]+|[0-9]+)|amp|quot|apos|lt|gt);/gi, (entity, name) => {
+        const named = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" };
+        if (name[0] !== "#")
+            return named[name.toLowerCase()] ?? entity;
+        const code = name[1]?.toLowerCase() === "x" ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+        return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)
+            ? String.fromCodePoint(code) : entity;
+    });
+}
+const ANCHOR = /<a(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'">])*?>/gi;
+const HREF = /(\s+href\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
+/** Collect only eligible anchors; position-specific replacement never alters text, image URLs or other attributes. */
+export function campaignClickDestinations(html, excluded = []) {
+    const urls = [];
+    for (const tag of html.matchAll(ANCHOR)) {
+        const match = HREF.exec(tag[0]);
+        if (!match)
+            continue;
+        const value = decodeHref(match[2] ?? match[3] ?? match[4] ?? "");
+        let destination;
+        try {
+            destination = validateStoredDestination(value);
+        }
+        catch {
+            continue;
+        }
+        if (excluded.includes(destination))
+            continue;
+        if (urls.length >= 200)
+            break;
+        urls.push(destination);
+    }
+    return urls;
+}
+export function rewriteCampaignClickAnchors(html, destinations, links) {
+    let index = 0;
+    return html.replace(ANCHOR, tag => {
+        const match = HREF.exec(tag);
+        if (!match)
+            return tag;
+        const value = decodeHref(match[2] ?? match[3] ?? match[4] ?? "");
+        let destination;
+        try {
+            destination = validateStoredDestination(value);
+        }
+        catch {
+            return tag;
+        }
+        if (destination !== destinations[index] || !links[index])
+            return tag;
+        const original = match[0];
+        const replacement = `${match[1]}"${links[index++].replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`;
+        return tag.replace(original, replacement);
+    });
+}
 function tokenHash(token) {
     return createHash("sha256").update(token).digest("hex");
 }
@@ -185,23 +243,35 @@ function validSignature(key, scope, token) {
 }
 function trackingUrl(base, route) {
     const result = new URL(base.toString());
-    result.pathname = `${result.pathname.replace(/\/?$/, "/")}${route.replace(/^\//, "")}`;
+    // The standalone frontend's /campaigns/ prefix is a browser-UI route, not
+    // the root-mounted public tracking router. Keep custom tracking-domain base
+    // paths unchanged; only the known application UI prefix uses the root route.
+    const prefix = result.pathname === "/campaigns/" ? "/" : result.pathname.replace(/\/?$/, "/");
+    result.pathname = `${prefix}${route.replace(/^\//, "")}`;
     result.search = "";
     result.hash = "";
     return result.toString();
 }
 async function selectBaseUrl(db, installationPublicUrl, domainId) {
     if (!domainId) {
-        const base = new URL(installationPublicUrl);
-        if (base.protocol !== "https:" || base.username || base.password)
-            throw httpError(409, "Installation public URL must use HTTPS");
+        let base;
+        try {
+            base = new URL(installationPublicUrl);
+        }
+        catch {
+            throw httpError(409, "Installation public URL is invalid");
+        }
+        if ((base.protocol !== "https:" && !(base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname))) ||
+            base.username || base.password || base.search || base.hash) {
+            throw httpError(409, "Installation public URL must use HTTPS (HTTP permitted only on loopback)");
+        }
         return base;
     }
     const result = await db.query("SELECT hostname,base_path FROM campaigns.custom_domains WHERE id=$1 AND verified_at IS NOT NULL", [domainId]);
     const row = result.rows[0];
     if (!row)
         throw httpError(409, "Custom domain is not verified");
-    return new URL(`https://${row.hostname}${normalizeBasePath(row.base_path)}`);
+    return new URL(`https://${normalizeCustomDomain(row.hostname)}${normalizeBasePath(row.base_path)}`);
 }
 export async function createCampaignTrackingLinks(db, input) {
     if (Buffer.byteLength(input.signingKey) < 32)
@@ -211,6 +281,8 @@ export async function createCampaignTrackingLinks(db, input) {
     const base = await selectBaseUrl(db, input.installationPublicUrl, input.domainId);
     const documentId = randomUUID();
     const trackingAllowed = input.trackingEnabled && !input.recipientTrackingOptOut;
+    const openAllowed = trackingAllowed && input.openTrackingEnabled !== false;
+    const clickAllowed = trackingAllowed && input.clickTrackingEnabled !== false;
     await db.query(`INSERT INTO campaigns.sent_documents
        (id,job_id,campaign_id,recipient_id,subject,html,text_content,tracking_allowed)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [documentId, input.jobId ?? null, input.campaignId ?? null, input.recipientId ?? null, input.subject,
@@ -223,15 +295,17 @@ export async function createCampaignTrackingLinks(db, input) {
         return token;
     };
     const webToken = await store("webversion", null, null, false);
-    const openToken = trackingAllowed ? await store("open", null, null, true) : null;
+    const openToken = openAllowed ? await store("open", null, null, true) : null;
     const clicks = [];
     for (const [index, item] of (input.clicks ?? []).entries()) {
         const destination = validateStoredDestination(item.url);
         const key = item.key?.trim() || createHash("sha256").update(`${index}:${destination}`).digest("hex").slice(0, 24);
         if (key.length > 200)
             throw httpError(400, "Click key is too long");
-        const token = await store("click", destination, key, trackingAllowed);
-        clicks.push({ key, destination, url: trackingUrl(base, `public/campaigns/click/${token}`) });
+        if (clickAllowed) {
+            const token = await store("click", destination, key, true);
+            clicks.push({ key, destination, url: trackingUrl(base, `public/campaigns/click/${token}`) });
+        }
     }
     return {
         documentId,
@@ -242,12 +316,25 @@ export async function createCampaignTrackingLinks(db, input) {
 }
 export function createPostgresTrackingEventRecorder(db, onUniqueEvent) {
     return async (event) => {
-        const inserted = await db.query(`INSERT INTO campaigns.tracking_event_ledger(document_id,event_type,event_key,occurred_at)
-       VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING document_id`, [event.documentId, event.type, event.key, event.occurredAt]);
-        if (!inserted.rowCount)
-            return false;
-        await onUniqueEvent(event);
-        return true;
+        const client = await db.connect?.();
+        if (!client)
+            throw new Error("Tracking event recording requires a transaction-capable PostgreSQL pool");
+        try {
+            await client.query("BEGIN");
+            const inserted = await client.query(`INSERT INTO campaigns.tracking_event_ledger(document_id,event_type,event_key,occurred_at)
+         VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING document_id`, [event.documentId, event.type, event.key, event.occurredAt]);
+            if (inserted.rowCount)
+                await onUniqueEvent(event, client);
+            await client.query("COMMIT");
+            return !!inserted.rowCount;
+        }
+        catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        }
+        finally {
+            client.release();
+        }
     };
 }
 export function createDomainsTrackingRouter(deps) {
@@ -338,6 +425,16 @@ export function createDomainsTrackingRouter(deps) {
         await deps.audit(request, "domain.delete", "custom_domain", id);
         response.json({ data: { deleted: true } });
     }));
+    router.use(createPublicCampaignsTrackingRouter(deps));
+    return router;
+}
+/** Mount at the HTTP root, ahead of static assets, without exposing management routes. */
+export function createPublicCampaignsTrackingRouter(deps) {
+    if (Buffer.byteLength(deps.signingKey) < 32)
+        throw new Error("Tracking signing key must contain at least 32 bytes");
+    const router = Router();
+    const fail = deps.http ?? httpError;
+    const now = deps.now ?? (() => new Date());
     const resolveToken = async (token, scope) => {
         if (token.length > 256 || !validSignature(deps.signingKey, scope, token))
             throw fail(404, "Link not found");
@@ -358,10 +455,17 @@ export function createDomainsTrackingRouter(deps) {
     const record = async (row, type, key) => {
         if (!row.record_event || !row.tracking_allowed)
             return;
-        await deps.recordEvent({
-            documentId: row.document_id, jobId: row.job_id, campaignId: row.campaign_id,
-            recipientId: row.recipient_id, type, key, occurredAt: now(),
-        });
+        // Analytics is best-effort. Never prevent a valid signed click from reaching
+        // its immutable, validated destination because event storage is unavailable.
+        try {
+            await deps.recordEvent({
+                documentId: row.document_id, jobId: row.job_id, campaignId: row.campaign_id,
+                recipientId: row.recipient_id, type, key, occurredAt: now(),
+            });
+        }
+        catch {
+            // No fabricated event or retry: the transactional recorder rolls back.
+        }
     };
     router.get("/public/campaigns/web/:token", deps.wrap(async (request, response) => {
         const row = await resolveToken(String(request.params.token), "webversion");

@@ -9,6 +9,21 @@ business records in one owner-authorized transaction. Destination installation
 settings (including its public URL) are preserved rather than overwritten.
 Credentials must be entered again for restored providers.
 
+Paid design intents are durable account/owner-scoped payment records. Their
+read-only recovery check count, last check time, reason code, source and deletion
+tombstones are included in application backups; importing an older backup cannot
+rewind an existing recovery budget or resurrect an intentionally deleted design.
+Three spaced automatic checks change an unresolved notice to "Review" without
+declaring the payment failed or clearing its purchase lock. Hiding the notice
+does not hide the record from the purchase history. Operators with connection
+management permission may inspect unresolved references and perform at most
+one additional account-scoped, read-only lookup per day, or restore an already
+verified missing source. No review action submits a purchase or issues a refund.
+Owner history and operator review use 100-record cursor pages so older payment
+references remain accessible. Only a verified typed pre-dispatch refusal
+releases the matching browser purchase guard; a failed central generation
+without confirmed financial settlement remains reviewable.
+
 Version 1 imports are rejected explicitly because they cannot represent audience
 definitions safely. Subscriber scope values from a backup are never trusted and
 are rebound to the destination installation's persisted singleton scope.

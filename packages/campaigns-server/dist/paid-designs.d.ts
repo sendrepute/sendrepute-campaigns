@@ -6,6 +6,11 @@ type Db = {
 type Bridge = {
     execute(operation: never, input: never): Promise<unknown>;
     getPaidResult?(id: string): Promise<unknown>;
+    getPaidIdentity?(): Promise<{
+        accountId: string;
+        credentialId: string;
+    }>;
+    resolvePaidResult?(id: string, reason: string): Promise<unknown>;
 };
 export declare const paidDesignOperations: Set<string>;
 export declare function paidDesignScope(secret: string): string;
@@ -21,10 +26,20 @@ export declare class PaidDesigns {
     private execute;
     purchase(operation: string, value: unknown): Promise<Json>;
     private save;
+    /** Explicit, owner-scoped local repair. Never dispatch a paid or central request. */
+    restoreSavedSource(id: string): Promise<"restored" | "already-present">;
     private repairPreviews;
     private reconcile;
-    list(templateId?: string): Promise<{
+    private verifyIdentity;
+    private consumeSettlement;
+    /** Operator authorization and audit are enforced by the route; no local override. */
+    resolve(id: string, reason: string): Promise<void>;
+    list(templateId?: string, operator?: boolean, cursor?: {
+        createdAt: string;
+        id: string;
+    }): Promise<{
         items: Json[];
+        nextCursor?: string;
     }>;
 }
 export {};

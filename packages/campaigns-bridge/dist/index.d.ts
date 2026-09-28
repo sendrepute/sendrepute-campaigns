@@ -6,7 +6,7 @@ export type CustomerApiScope = "classify" | "models:read" | "usage:read" | "acco
  * Hosted handoffs are intentionally unavailable through the generic executor:
  * their return origin must remain controlled by the trusted server integration.
  */
-export type GenericOperationId = Exclude<OperationId, "customerCreateHostedBuilderHandoff" | "customerQuoteCampaignInsights" | "customerAnalyzeCampaignInsights">;
+export type GenericOperationId = Exclude<OperationId, "customerCreateHostedBuilderHandoff" | "customerQuoteCampaignInsights" | "customerAnalyzeCampaignInsights" | "customerResolvePaidResult" | "customerPaidResultIdentity">;
 export declare const PRODUCTION_API_BASE_URL: "https://www.sendrepute.com/api/";
 export declare const PRODUCTION_HOSTED_BUILDER_ORIGIN: string;
 export declare const MAX_BRIDGE_REQUEST_BYTES: number;
@@ -138,6 +138,18 @@ export declare const operationCapabilities: {
         readonly scope: "rewrite";
         readonly billable: true;
         readonly consent: "rewriteQuote";
+    };
+    readonly customerFinalizeAiRewrite: {
+        readonly method: "POST";
+        readonly path: "/v1/rewrite/finalize";
+        readonly scope: "rewrite";
+        readonly billable: false;
+    };
+    readonly customerGetAiRewriteResult: {
+        readonly method: "GET";
+        readonly path: "/v1/rewrite/result/{requestId}";
+        readonly scope: "rewrite";
+        readonly billable: false;
     };
     readonly customerQuoteAiRewrite: {
         readonly method: "POST";
@@ -446,6 +458,11 @@ export declare class SendReputeClient {
         expiresAt: string;
     }>;
     /** Authenticated read-only recovery through the same pinned SDK transport. */
+    getPaidIdentity(): Promise<{
+        accountId: string;
+        credentialId: string;
+    }>;
+    resolvePaidResult(recoveryId: string, reason: string): Promise<unknown>;
     getPaidResult(recoveryId: string): Promise<OperationResponse<"customerGetPaidResult">>;
     /**
      * Free activation check. These GETs neither require a positive wallet balance

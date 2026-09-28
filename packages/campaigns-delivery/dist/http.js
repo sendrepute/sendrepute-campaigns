@@ -1,7 +1,7 @@
 import { DeliveryError } from "./types.js";
 const DEFAULT_TIMEOUT = 10_000;
 const DEFAULT_MAX_RESPONSE = 1_048_576;
-export async function boundedFetch(url, init, options, operation) {
+export async function boundedFetch(url, init, options, operation, parseJson = JSON.parse) {
     const fetchImpl = options.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== "function") {
         throw new DeliveryError("No fetch implementation is available", "FETCH_UNAVAILABLE", "not-sent");
@@ -70,7 +70,7 @@ export async function boundedFetch(url, init, options, operation) {
     let json = undefined;
     if (text) {
         try {
-            json = JSON.parse(text);
+            json = parseJson(text);
         }
         catch { /* caller can use bounded text */ }
     }

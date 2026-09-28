@@ -1,5 +1,7 @@
 import { type DnsResolver } from "./types.js";
 export declare function parseTokenWebhook(provider: "mailjet" | "smtpcom", rawBody: string | Uint8Array, actualToken: string, expectedToken: string): unknown;
+/** Verify provider signatures over the original HTTP bytes before parsing or writing events. */
+export declare function verifyProviderEventWebhook(provider: "mailgun" | "resend" | "sendgrid", raw: Buffer, headers: Readonly<Record<string, string | undefined>>, credential: string, now?: number): unknown;
 export interface SnsCertificateFetchRequest {
     /** DNS result already checked as public and pinned for this request. */
     address: string;

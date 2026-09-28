@@ -1,3 +1,29 @@
+# Provider analytics and event callbacks
+
+The in-app **Docs → Providers → Provider analytics and webhook setup** reference
+contains per-provider steps. Configure a public HTTPS installation URL before
+provisioning callbacks. Keep credentials in the provider console only; never
+share signed URLs, Basic passwords or webhook signing secrets in logs. Enable
+analytics and tracking flags explicitly, then verify provider-generated test
+events in the provider analytics view. A saved endpoint is not proof of delivery.
+
+| Connection | Provider-event ingest | History read | Setup / limitations |
+| --- | --- | --- | --- |
+| Mailjet API or Mailjet SMTP | Dedicated Basic authenticated event callback | Known exact message IDs, recent 100 only | Use provider edit “Provision / reveal”; configure Mailjet Event Tracking sent, bounce, blocked, spam, open, click and unsubscribe. Polling 404 and older IDs remain unknown. |
+| Amazon SES API | Signed SNS, allowed topic ARNs | None | Enter `snsTopicArns` on the SES provider form, publish configuration-set events to SNS, subscribe the HTTPS `/api/campaigns/webhooks/<provider ID>` endpoint and confirm subscription manually in AWS. SNS cert and signatures are verified. |
+| Mailgun API | Timestamped signing-key callback | Domain-scoped event API | Save the Mailgun webhook Signing Key in provider edit and configure the displayed HTTPS callback in Mailgun. |
+| SendGrid API | Signed ECDSA event callback | Email Activity API; account entitlement required | Save the SendGrid signature verification public key in provider edit; turn on Signed Event Webhook in SendGrid. 403/permission failure is not zero events. |
+| Resend API | Signed Svix-compatible callback | Known message IDs; last event only | Save the `whsec_` signing secret in provider edit; select events in Resend. No complete event history is implied by the known-ID read. |
+| Postmark API / Postmark SMTP | Dedicated Basic authenticated callback | Outbound message details/events | Reveal dedicated Basic credentials in provider edit; paste the authenticated HTTPS callback into Postmark webhooks. Select delivery, bounce, open, click, spam complaint and subscription events where offered. Postmark does not sign webhooks; it recommends Basic authentication and optionally provider IP allowlisting. |
+| Brevo API | Dedicated Basic authenticated callback | SMTP statistics events | Reveal dedicated Basic credentials in provider edit; paste the authenticated HTTPS URL into a Brevo **transactional** webhook. Choose delivered, soft/hard bounce, complaint, opening, click and unsubscribe. Brevo also documents bearer authentication but this installation uses its documented Basic URL method. Provider retention/permissions apply to polling. |
+| SMTP.com API | No verified supported callback | None | Provider public API documentation confirmed sending authentication, not event callback authentication or payload schema. Legacy manual bearer receiver is not a supported self-service integration; analytics is unavailable until officially documented callback support can be validated. |
+| Generic SMTP / other SMTP presets | None | None | SMTP accept is not delivered. Separate opt-in local open/click tracking is documented in `lib/campaigns-server/SMTP-TRACKING.md`; pixels can be blocked and scanners can click. |
+
+Webhook notifications require matching locally sent message IDs. Signed
+callbacks have bounded timestamp freshness, SNS enforces a topic allowlist,
+and duplicate events are persisted idempotently. Provider API acceptance
+never proves recipient delivery or inbox placement. Missing provider history
+and disabled metrics must be treated as **unknown**, not zero.
 # Operations, upgrades, backups, and troubleshooting
 
 ## Upgrade
@@ -35,6 +61,32 @@ saved audience segments. It deliberately excludes delivery jobs and immutable
 delivery events. Restoring a version 2 export never changes delivery history
 and never queues mail. Keep the matching database backup when delivery audit
 history must also be recoverable.
+
+## Unresolved paid designs
+
+Keep the purchase reference when a paid design does not appear. A timeout, a
+missing recovery result (404), or a generic generation failure does **not**
+prove that no charge occurred. Do not repeat the purchase to test it.
+
+Automatic recovery checks are bounded. A case marked `needs_review` remains
+financially unresolved; hiding its notice does not release the purchase lock.
+An authorized connection administrator can review the original attempt and
+request settlement using a reason recorded in the audit history. Settlement
+uses the authenticated central account and credential, not an operator's
+assertion about the balance. A different connection or credential is not
+evidence about the original purchase.
+
+Only exact purchase evidence can close the case: a retained paid result, a
+confirmed refund, or authoritative confirmation that no charge occurred.
+Resolution must not invoke generation again. A valid retained result is
+recovered rather than refunded; an ambiguous or still-running attempt remains
+locked. Refund settlement, when eligible, is atomic and safe to repeat without
+issuing a second credit.
+
+Keep permanent purchase records and audit history in infrastructure backups.
+Intentionally deleting a saved design retains its payment record and deletion
+marker; recovery must not recreate it. Do not edit purchase rows, remove
+locks, or adjust balances directly as a recovery procedure.
 
 ## Troubleshooting
 

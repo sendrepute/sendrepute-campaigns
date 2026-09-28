@@ -2,7 +2,7 @@ import { isIP } from "node:net";
 import { resolve4, resolve6 } from "node:dns/promises";
 import nodemailer from "nodemailer";
 import { DeliveryError } from "./types.js";
-import { publicAddress } from "./validate.js";
+import { permittedSmtpAddress } from "./validate.js";
 async function defaultResolve(host) {
     if (isIP(host))
         return [host];
@@ -31,7 +31,7 @@ async function transport(config, options) {
     }
     if (!addresses.length)
         throw new DeliveryError("SMTP host did not resolve", "SMTP_DNS_FAILED", "not-sent", undefined, true);
-    if (addresses.some(address => !isIP(address) || (!config.allowPrivateHost && !publicAddress(address))))
+    if (addresses.some(address => !isIP(address) || !permittedSmtpAddress(address, config.allowPrivateHost === true)))
         throw new DeliveryError("SMTP host resolves to a private, reserved or invalid address", "SMTP_SSRF_BLOCKED", "not-sent");
     // Pin the first validated address for the connection. TLS still authenticates the configured hostname.
     const settings = {
@@ -85,7 +85,7 @@ export async function verifySmtp(config, options) {
             throw new DeliveryError("SMTP authentication failed", "SMTP_AUTH_FAILED", "not-sent", responseCode);
         if (code === "ETIMEDOUT" || code === "ESOCKETTIMEDOUT")
             throw new DeliveryError("SMTP verification timed out", "SMTP_TIMEOUT", "not-sent", undefined, true);
-        if (code === "ETLS" || code === "ESOCKET")
+        if (code === "ETLS")
             throw new DeliveryError("SMTP TLS verification failed", "SMTP_TLS_FAILED", "not-sent");
         throw new DeliveryError("SMTP verification failed", "SMTP_VERIFY_FAILED", "not-sent", Number.isFinite(responseCode) ? responseCode : undefined);
     }

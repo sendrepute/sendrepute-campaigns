@@ -25,6 +25,9 @@ export declare const systemDnsVerifier: DnsVerifier;
 export declare function verifyDomainChallenge(hostnameValue: string, challenge: string, resolver?: DnsVerifier): Promise<void>;
 export declare function sanitizeWebVersionHtml(value: string): string;
 export declare function validateStoredDestination(value: unknown): string;
+/** Collect only eligible anchors; position-specific replacement never alters text, image URLs or other attributes. */
+export declare function campaignClickDestinations(html: string, excluded?: string[]): string[];
+export declare function rewriteCampaignClickAnchors(html: string, destinations: string[], links: string[]): string;
 export type CreateTrackingLinksInput = {
     signingKey: Buffer | string;
     installationPublicUrl: string;
@@ -36,6 +39,8 @@ export type CreateTrackingLinksInput = {
     html: string;
     text?: string | null;
     trackingEnabled: boolean;
+    openTrackingEnabled?: boolean;
+    clickTrackingEnabled?: boolean;
     recipientTrackingOptOut: boolean;
     clicks?: Array<{
         key?: string;
@@ -53,7 +58,7 @@ export declare function createCampaignTrackingLinks(db: DomainsTrackingDb, input
         url: string;
     }>;
 }>;
-export declare function createPostgresTrackingEventRecorder(db: DomainsTrackingDb, onUniqueEvent: (event: TrackingEvent) => Promise<void>): TrackingEventRecorder;
+export declare function createPostgresTrackingEventRecorder(db: DomainsTrackingDb, onUniqueEvent: (event: TrackingEvent, client: DomainsTrackingDb) => Promise<void>): TrackingEventRecorder;
 type RouterDeps = {
     db: DomainsTrackingDb;
     signingKey: Buffer | string;
@@ -72,5 +77,7 @@ type RouterDeps = {
     audit: (request: Request, action: string, entityType: string, entityId: string | null, metadata?: Record<string, unknown>) => Promise<void>;
 };
 export declare function createDomainsTrackingRouter(deps: RouterDeps): Router;
+/** Mount at the HTTP root, ahead of static assets, without exposing management routes. */
+export declare function createPublicCampaignsTrackingRouter(deps: Pick<RouterDeps, "db" | "signingKey" | "now" | "recordEvent" | "wrap" | "http">): Router;
 export {};
 //# sourceMappingURL=domains-tracking.d.ts.map

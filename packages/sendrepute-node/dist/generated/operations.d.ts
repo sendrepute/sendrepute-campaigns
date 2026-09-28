@@ -56,6 +56,7 @@ export type AiRewriteResult = {
     mode: "single" | "all";
     input: RewrittenClassificationInput;
     classification: ClassificationResult;
+    classificationExactInput?: boolean;
     replacements: Array<AiReplacement>;
     charge: AiRewriteCharge;
     balanceAfterMillicents: number;
@@ -593,6 +594,7 @@ export type CustomerVipBuilderAccessInput = {
     sourceKind: "template" | "blank";
     templateId?: string;
     expectedPriceMillicents: number;
+    recoveryId?: string;
 };
 export type CustomerVipEmailTemplateInput = {
     prompt: string;
@@ -893,6 +895,21 @@ export interface OperationMap {
         };
         response: undefined;
     };
+    customerFinalizeAiRewrite: {
+        input: {
+            body: {
+                requestId: string;
+                sender: string;
+                subject: string;
+                body: string;
+            };
+        };
+        response: {
+            requestId: string;
+            input: RewrittenClassificationInput;
+            classification: ClassificationResult;
+        };
+    };
     customerGetAccount: {
         input: Record<string, never>;
         response: Account;
@@ -909,6 +926,14 @@ export interface OperationMap {
     customerGetActiveDepositOffer: {
         input: Record<string, never>;
         response: DepositBonusOffer | null;
+    };
+    customerGetAiRewriteResult: {
+        input: {
+            path: {
+                requestId: string;
+            };
+        };
+        response: AiRewriteResult;
     };
     customerGetCreditLedger: {
         input: {
@@ -939,7 +964,17 @@ export interface OperationMap {
         };
         response: {
             status: "pending" | "succeeded" | "failed";
-            operation: "customerStandardAiGenerate" | "customerVipAiGenerate";
+            operation: "customerStandardAiGenerate" | "customerVipAiGenerate" | "customerVipBuilderAccess";
+            settlement: {
+                kind: "paid_result" | "no_charge" | "confirmed_refund" | "unresolved";
+                accountId: string;
+                credentialId: string | null;
+                recoveryId: string;
+                receiptId: string;
+                chargeMillicents?: number;
+                refundMillicents?: number;
+                deletedAt?: string;
+            };
             result?: {
                 [key: string]: unknown;
             };
@@ -1029,6 +1064,13 @@ export interface OperationMap {
         };
         response: CustomerNativeBuilderValidateResult;
     };
+    customerPaidResultIdentity: {
+        input: Record<string, never>;
+        response: {
+            accountId: string;
+            credentialId: string;
+        };
+    };
     customerPurchaseVip: {
         input: {
             body: CustomerVipPurchaseInput;
@@ -1062,6 +1104,37 @@ export interface OperationMap {
     customerRefreshMyPayments: {
         input: Record<string, never>;
         response: Array<BitcoinInvoice>;
+    };
+    customerResolvePaidResult: {
+        input: {
+            body: {
+                action: "resolve";
+                reason: string;
+            };
+            path: {
+                recoveryId: string;
+            };
+        };
+        response: {
+            status: "pending" | "succeeded" | "failed";
+            operation: "customerStandardAiGenerate" | "customerVipAiGenerate" | "customerVipBuilderAccess";
+            settlement: {
+                kind: "paid_result" | "no_charge" | "confirmed_refund" | "unresolved";
+                accountId: string;
+                credentialId: string | null;
+                recoveryId: string;
+                receiptId: string;
+                chargeMillicents?: number;
+                refundMillicents?: number;
+                deletedAt?: string;
+            };
+            result?: {
+                [key: string]: unknown;
+            };
+            error?: {
+                [key: string]: unknown;
+            };
+        };
     };
     customerRewriteFlaggedTermsWithAi: {
         input: {

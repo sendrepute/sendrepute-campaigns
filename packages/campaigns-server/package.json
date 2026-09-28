@@ -25,6 +25,8 @@
     "TEST-SEND-UI.md",
     "TELEGRAM-UI.md",
     "AUTOMATIONS.md",
+    "SMTP-TRACKING.md",
+    "CSV-MERGE.md",
     "openapi.delivery.json"
   ],
   "engines": {

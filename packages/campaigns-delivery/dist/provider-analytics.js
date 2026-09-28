@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { boundedFetch } from "./http.js";
+import { parseMailjetJson } from "./mailjet-json.js";
 export class ProviderAnalyticsError extends Error {
     kind;
     statusCode;
@@ -23,6 +24,7 @@ export function providerAnalyticsCapability(type) {
         case "ses":
             return { availability: "webhook", metrics: common, reason: "SES publishes per-message events through configuration-set event destinations; it has no per-message analytics polling endpoint." };
         case "mailjet":
+            return { availability: "poll_and_webhook", metrics: common, reason: "Polling checks recent known message IDs; missing histories and older messages remain unknown." };
         case "mailgun":
         case "sendgrid":
         case "postmark":
@@ -31,9 +33,9 @@ export function providerAnalyticsCapability(type) {
         case "resend":
             return { availability: "poll_and_webhook", metrics: common, reason: "Polling is bounded to known provider message IDs; webhooks provide the event stream." };
         case "smtpcom":
-            return { availability: "webhook", metrics: common, reason: "SMTP.com documents callback notifications; this integration does not claim an undocumented history endpoint." };
+            return { availability: "unavailable", metrics: allFalse, reason: "SMTP.com callback authentication and event payload support could not be verified from official provider documentation; analytics is disabled. Sending verification is separate." };
         case "smtp":
-            return { availability: "webhook", metrics: allFalse, reason: "Generic SMTP has no analytics API. Only explicitly configured relay event hooks can supply events." };
+            return { availability: "unavailable", metrics: allFalse, reason: "Generic SMTP has no provider event API. Local open/click tracking, when enabled, is separate from provider analytics." };
     }
 }
 function stable(value) {
@@ -126,7 +128,7 @@ export function normalizeProviderAnalyticsWebhook(type, payload) {
         : type === "mailjet" ? objects(source)
             : type === "ses" ? objects(root)
                 : type === "brevo" ? objects(source)
-                    : type === "resend" ? objects(root?.data ?? source)
+                    : type === "resend" ? objects(source)
                         : objects(source);
     return rows.map(row => {
         if (type === "ses") {
@@ -139,21 +141,25 @@ export function normalizeProviderAnalyticsWebhook(type, payload) {
             });
         }
         if (type === "mailjet") {
+            // Mailjet's "sent" event means accepted by the recipient mail server
+            // (transport delivery, never proof of inbox placement).
             const kind = String(row.event ?? row.EventType ?? "").toLowerCase() === "sent" ? "delivered" : row.event ?? row.EventType;
             return event(type, row.MessageID ?? row.message_id, kind, row.time ?? row.EventAt, { recipient: row.email ?? row.ContactAlt, link: row.url, detail: row.error_related_to });
         }
         if (type === "sendgrid")
-            return event(type, row.sg_message_id ?? row.msg_id, row.event, row.timestamp, { recipient: row.email, link: row.url, detail: row.type ?? row.reason });
+            return event(type, text(row.sg_message_id)?.split(".")[0] ?? row.msg_id, row.event, row.timestamp, { recipient: row.email, link: row.url, detail: row.type ?? row.reason });
         if (type === "postmark")
             return event(type, row.MessageID, row.RecordType ?? row.Type ?? row.Status, row.DeliveredAt ?? row.ReceivedAt ?? row.BouncedAt, { recipient: row.Recipient ?? row.Email, link: row.OriginalLink ?? row.Details?.Link, detail: row.Details?.Type ?? row.Description });
         if (type === "brevo")
-            return event(type, row["message-id"] ?? row.messageId, row.event, row.date ?? row.ts_event, { recipient: row.email, link: row.link, detail: row.reason });
-        if (type === "resend")
-            return event(type, row.email_id ?? row.id, row.type ?? row.last_event, row.created_at ?? row.updated_at, { recipient: row.to, link: row.click?.link });
+            return event(type, row["message-id"] ?? row.messageId, row.event, row.ts_event ?? row.ts ?? row.date, { recipient: row.email, link: row.link, detail: row.reason });
+        if (type === "resend") {
+            const data = (row.data && typeof row.data === "object" ? row.data : row);
+            return event(type, data.email_id ?? data.id, row.type ?? data.last_event, row.created_at ?? data.updated_at, { recipient: data.to, link: data.click?.link });
+        }
         if (type === "mailgun") {
             const headers = row.message?.headers;
             const status = row["delivery-status"];
-            return event(type, headers?.["message-id"] ?? row.id, row.event, row.timestamp, { recipient: row.recipient, detail: status?.severity ?? status?.description });
+            return event(type, headers?.["message-id"], row.event, row.timestamp, { recipient: row.recipient, detail: status?.severity ?? status?.description });
         }
         return event(type, row.message_id ?? row.msg_id, row.event ?? row.type, row.timestamp ?? row.time, { recipient: row.email ?? row.recipient, link: row.url, detail: row.reason ?? row.description });
     }).filter((item) => !!item);
@@ -174,8 +180,8 @@ function cursor(value) {
 function next(value) {
     return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
-async function get(url, headers, options) {
-    const result = await boundedFetch(url, { method: "GET", headers: { accept: "application/json", ...headers } }, options, "verify");
+async function get(url, headers, options, parseJson) {
+    const result = await boundedFetch(url, { method: "GET", headers: { accept: "application/json", ...headers } }, options, "verify", parseJson);
     if (!result.ok) {
         const kind = result.status === 401 ? "authentication" : result.status === 403 ? "permission" : result.status === 429 ? "rate_limited" : "provider";
         throw new ProviderAnalyticsError(kind === "permission" ? "Provider API key lacks analytics permission" : kind === "authentication" ? "Provider analytics authentication failed" : `Provider analytics request failed (HTTP ${result.status})`, kind, result.status);
@@ -183,6 +189,21 @@ async function get(url, headers, options) {
     return result.json;
 }
 function dateOnly(value) { return value.toISOString().slice(0, 10); }
+/** Message history is a different schema from Mailjet's webhook event payload. */
+function mailjetHistory(payload, id) {
+    const body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
+    if (!body || !Array.isArray(body.Data)) {
+        throw new ProviderAnalyticsError("Mailjet message history response has no Data array", "provider");
+    }
+    return objects(body.Data).flatMap(row => {
+        const kind = String(row.EventType ?? "").toLowerCase();
+        // Mailjet documents "sent" as delivered to the recipient server, not inbox placement.
+        const mapped = { sent: "delivered", open: "opened", opened: "opened", click: "clicked", clicked: "clicked",
+            bounced: "bounced", blocked: "blocked", unsub: "unsubscribed", spam: "complained" }[kind];
+        const value = mapped && event("mailjet", id, mapped, row.EventAt, { detail: row.State ?? row.Comment });
+        return value ? [value] : [];
+    });
+}
 export async function syncProviderAnalytics(config, request = {}, options = {}) {
     const limit = Math.max(1, Math.min(100, request.limit ?? 50));
     const state = cursor(request.cursor);
@@ -190,21 +211,49 @@ export async function syncProviderAnalytics(config, request = {}, options = {}) 
     let payload;
     let nextState = {};
     let rows = [];
+    let missingMessageCount = 0;
+    let batchCount;
+    let batchHasMore;
     if (config.type === "ses" || config.type === "smtp" || config.type === "smtpcom") {
         throw new ProviderAnalyticsError(providerAnalyticsCapability(config.type).reason ?? "Provider polling is unavailable", "unavailable");
     }
     if (config.type === "mailjet") {
-        const offset = Number(state.offset ?? 0);
-        payload = await get(`https://api.mailjet.com/v3/REST/messageevent?Limit=${limit}&Offset=${offset}&Sort=EventAt+ASC`, { authorization: `Basic ${Buffer.from(`${config.apiKey}:${config.secretKey}`).toString("base64")}` }, options);
-        const data = payload?.Data;
-        rows = normalizeProviderAnalyticsWebhook("mailjet", data);
-        nextState = { offset: offset + (Array.isArray(data) ? data.length : 0) };
+        // Never use an account-wide endpoint or floating-point coercion for Mailjet IDs.
+        // Sort and bound the installation's known IDs; reset on membership changes, and
+        // revisit the same IDs after each cycle to pick up late opens/clicks.
+        const ids = [...new Set(request.providerMessageIds ?? [])].filter(id => /^[1-9]\d{0,19}$/.test(id)).slice(0, 100);
+        if (!ids.length)
+            throw new ProviderAnalyticsError("No exact Mailjet message IDs are available for history polling; send a campaign first or use authenticated webhooks", "unavailable");
+        const signature = createHash("sha256").update(JSON.stringify(ids)).digest("hex");
+        const prior = Number(state.offset);
+        const offset = state.signature === signature && Number.isSafeInteger(prior) && prior >= 0 && prior < ids.length ? prior : 0;
+        const batch = ids.slice(offset, offset + limit);
+        const auth = { authorization: `Basic ${Buffer.from(`${config.apiKey}:${config.secretKey}`).toString("base64")}` };
+        // Sequential requests avoid bursts against the provider's rate limit.
+        for (const id of batch) {
+            try {
+                payload = await get(`https://api.mailjet.com/v3/REST/messagehistory/${id}`, auth, options, parseMailjetJson);
+                rows.push(...mailjetHistory(payload, id));
+            }
+            catch (error) {
+                if (error instanceof ProviderAnalyticsError && error.statusCode === 404) {
+                    missingMessageCount++;
+                    continue;
+                }
+                throw error;
+            }
+        }
+        batchCount = batch.length;
+        batchHasMore = offset + batch.length < ids.length;
+        nextState = { signature, offset: batchHasMore ? offset + batch.length : 0 };
     }
     else if (config.type === "brevo") {
         const offset = Number(state.offset ?? 0);
         const start = typeof state.start === "string" ? state.start : dateOnly(new Date(now.valueOf() - 7 * 86_400_000));
         payload = await get(`https://api.brevo.com/v3/smtp/statistics/events?limit=${limit}&offset=${offset}&sort=asc&startDate=${encodeURIComponent(start)}&endDate=${dateOnly(now)}`, { "api-key": config.apiKey }, options);
         const events = payload?.events;
+        if (!Array.isArray(events))
+            throw new ProviderAnalyticsError("Brevo event response has no events array; history is unknown", "provider");
         rows = normalizeProviderAnalyticsWebhook("brevo", events);
         nextState = { start, offset: offset + (Array.isArray(events) ? events.length : 0) };
     }
@@ -213,6 +262,8 @@ export async function syncProviderAnalytics(config, request = {}, options = {}) 
         const from = typeof state.from === "string" ? state.from : new Date(now.valueOf() - 7 * 86_400_000).toISOString();
         payload = await get(`https://api.postmarkapp.com/messages/outbound?count=${limit}&offset=${offset}&fromdate=${encodeURIComponent(from)}&todate=${encodeURIComponent(now.toISOString())}`, { "x-postmark-server-token": config.serverToken }, options);
         const messages = payload?.Messages;
+        if (!Array.isArray(messages))
+            throw new ProviderAnalyticsError("Postmark outbound response has no Messages array; history is unknown", "provider");
         const summaries = objects(messages);
         const details = await Promise.all(summaries.map(async (summary) => {
             const id = text(summary.MessageID);
@@ -236,6 +287,8 @@ export async function syncProviderAnalytics(config, request = {}, options = {}) 
         const suffix = pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : "";
         payload = await get(`https://api.sendgrid.com/v3/messages?limit=${limit}&query=${encodeURIComponent(query)}${suffix}`, { authorization: `Bearer ${config.apiKey}` }, options);
         const body = payload;
+        if (!body || !Array.isArray(body.messages))
+            throw new ProviderAnalyticsError("SendGrid activity response has no messages array; history is unknown", "provider");
         rows = objects(body.messages).flatMap(message => {
             const at = message.last_event_time;
             const id = message.msg_id;
@@ -244,16 +297,8 @@ export async function syncProviderAnalytics(config, request = {}, options = {}) 
             const status = event("sendgrid", id, message.status, at, { recipient });
             if (status)
                 events.push(status);
-            if (Number(message.opens_count) > 0) {
-                const item = event("sendgrid", id, "opened", at, { recipient });
-                if (item)
-                    events.push(item);
-            }
-            if (Number(message.clicks_count) > 0) {
-                const item = event("sendgrid", id, "clicked", at, { recipient });
-                if (item)
-                    events.push(item);
-            }
+            // Activity search supplies counts, not individual open/click event
+            // timestamps. Never fabricate engagement events at last_event_time.
             return events;
         });
         nextState = typeof body.next_page_token === "string" ? { from, to, pageToken: body.next_page_token } : {};
@@ -265,6 +310,8 @@ export async function syncProviderAnalytics(config, request = {}, options = {}) 
         const pageQuery = typeof state.pageQuery === "string" && state.pageQuery.length <= 4096 ? state.pageQuery : undefined;
         payload = await get(pageQuery ? `${base}?${pageQuery}` : `${base}?limit=${limit}&ascending=yes&begin=${encodeURIComponent(begin)}`, { authorization: `Basic ${Buffer.from(`api:${config.apiKey}`).toString("base64")}` }, options);
         const body = payload;
+        if (!body || !Array.isArray(body.items))
+            throw new ProviderAnalyticsError("Mailgun event response has no items array; history is unknown", "provider");
         rows = normalizeProviderAnalyticsWebhook("mailgun", body.items);
         const paging = body.paging;
         const nextUrl = typeof paging?.next === "string" ? new URL(paging.next) : undefined;
@@ -275,9 +322,13 @@ export async function syncProviderAnalytics(config, request = {}, options = {}) 
     }
     else {
         const ids = [...new Set(request.providerMessageIds ?? [])].filter(id => id && id.length <= 998).slice(0, limit);
+        if (!ids.length)
+            throw new ProviderAnalyticsError("No known Resend message IDs are available; send a campaign first or configure signed webhooks", "unavailable");
         const offset = Number(state.offset ?? 0);
         const batch = ids.slice(offset, offset + limit);
         const responses = await Promise.all(batch.map(id => get(`https://api.resend.com/emails/${encodeURIComponent(id)}`, { authorization: `Bearer ${config.apiKey}` }, options)));
+        if (responses.some(value => !value || typeof value !== "object" || Array.isArray(value) || typeof value.id !== "string"))
+            throw new ProviderAnalyticsError("Resend email response has no message ID; history is unknown", "provider");
         rows = responses.flatMap(value => normalizeProviderAnalyticsWebhook("resend", value));
         nextState = { offset: offset + batch.length };
     }
@@ -288,6 +339,7 @@ export async function syncProviderAnalytics(config, request = {}, options = {}) 
                 : Array.isArray(payload?.Messages) ? payload.Messages.length
                     : Array.isArray(payload?.messages) ? payload.messages.length
                         : Array.isArray(payload?.items) ? payload.items.length : 0;
-    return { events: unique, nextCursor: next(nextState), hasMore: count >= limit };
+    return { events: unique, nextCursor: next(nextState), hasMore: batchHasMore ?? count >= limit,
+        ...(batchCount !== undefined ? { missingMessageCount } : {}) };
 }
 //# sourceMappingURL=provider-analytics.js.map

@@ -6,6 +6,7 @@ import { validateConfig, validateMessage } from "./validate.js";
 export * from "./types.js";
 export * from "./webhooks.js";
 export * from "./provider-analytics.js";
+export * from "./mailjet-reconciliation.js";
 export async function sendMessage(config, message, options = {}) {
     validateConfig(config);
     validateMessage(message);

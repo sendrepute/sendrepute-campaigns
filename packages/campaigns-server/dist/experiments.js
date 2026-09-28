@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Router } from "express";
-import { renderMergeVariables } from "./audience.js";
+import { renderMergeVariables, subscriberMergeVariables } from "./audience.js";
 export function partitionAudience(id, recipients, percent) {
     const sorted = [...recipients].sort((a, b) => {
         const digest = (v) => createHash("sha256").update(`${id}:${v.id}`).digest("hex");
@@ -106,12 +106,12 @@ export function createExperimentsRouter(d) {
                 results: { A: { accepted: 0, events: 0, rate: null }, B: { accepted: 0, events: 0, rate: null } }, winner: null, reason: "not_started" };
             await db.query("INSERT INTO campaigns.experiments(id,campaign_id,body,frozen) VALUES($1,$2,$3,$4)", [id, b.campaignId, body, { campaign, templates: { A: a, B: bt }, variants: body.variants }]);
             for (const { subscriber, arm } of assigned) {
-                const variables = { ...(subscriber.metadata ?? {}), email: subscriber.email, firstName: subscriber.firstName ?? "", lastName: subscriber.lastName ?? "", name: [subscriber.firstName, subscriber.lastName].filter(Boolean).join(" ") };
+                const variables = subscriberMergeVariables({ email: String(subscriber.email), firstName: typeof subscriber.firstName === "string" ? subscriber.firstName : null, lastName: typeof subscriber.lastName === "string" ? subscriber.lastName : null, metadata: subscriber.metadata }, "{{unsubscribe_url}}");
                 const snapshots = {};
                 for (const variant of ["A", "B"]) {
                     const t = variant === "A" ? a : bt, v = body.variants[variant], missing = String(campaign.mergeMissingPolicy ?? "empty");
                     snapshots[variant] = { campaign: { ...campaign, ...v, subject: renderMergeVariables(String(v.subject), variables, { format: "text", missing }) },
-                        template: { ...t, html: renderMergeVariables(String(t.html ?? ""), variables, { format: "html", missing }), text: renderMergeVariables(String(t.text ?? ""), variables, { format: "text", missing }) },
+                        template: { ...t, subject: renderMergeVariables(String(t.subject ?? ""), variables, { format: "text", missing }), html: renderMergeVariables(String(t.html ?? ""), variables, { format: "html", missing }), text: renderMergeVariables(String(t.text ?? ""), variables, { format: "text", missing }) },
                         subscriber, audience: { scope: audience.scope, generatedAt: audience.generatedAt, source: audience.source }, experimentId: id, experimentArm: arm, experimentVariant: variant };
                 }
                 await db.query("INSERT INTO campaigns.experiment_audience(experiment_id,recipient_id,arm,snapshot) VALUES($1,$2,$3,$4)", [id, subscriber.id, arm, snapshots]);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import { compileAudiencePredicate, createPostgresAudienceRepository, renderMergeVariables } from "./audience.js";
+import { compileAudiencePredicate, createPostgresAudienceRepository, renderMergeVariables, subscriberMergeVariables } from "./audience.js";
 const LOCK = 731946215;
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const uuid = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -495,10 +495,11 @@ export async function advanceAutomations(db, limit = 100) {
                                     throw Object.assign(new Error("recipient_excluded"), { recipientExcluded: true });
                                 }
                             }
-                            const values = { ...sub, ...(sub.metadata ?? {}) };
+                            const values = subscriberMergeVariables(sub, "{{unsubscribe_url}}");
                             const missing = snapshot.campaign.mergeMissingPolicy ?? "error";
                             snapshot.template.html = renderMergeVariables(String(snapshot.template.html ?? ""), values, { format: "html", missing });
                             snapshot.template.text = renderMergeVariables(String(snapshot.template.text ?? ""), values, { format: "text", missing });
+                            snapshot.template.subject = renderMergeVariables(String(snapshot.template.subject ?? ""), values, { format: "text", missing });
                             snapshot.campaign.subject = renderMergeVariables(String(snapshot.campaign.subject ?? ""), values, { format: "text", missing });
                             snapshot.subscriber = sub;
                             snapshot.audience = { scope: sub.scope };

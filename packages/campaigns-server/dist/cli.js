@@ -17,8 +17,19 @@ const publicDir = process.env.CAMPAIGNS_PUBLIC_DIR;
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", process.env.CAMPAIGNS_TRUST_PROXY === "true" ? 1 : false);
-app.use(express.json({ limit: "4mb", type: ["application/json", "application/*+json"] }));
-app.use("/api/campaigns", createCampaignsRouter({ databaseUrl, dataDir }));
+app.use(express.json({ limit: "4mb", type: ["application/json", "application/*+json"],
+    verify: (request, _response, buffer) => {
+        // Preserve integer Mailjet MessageID before JSON.parse rounds it.
+        if (/^\/api\/campaigns\/webhooks\//.test(request.url ?? ""))
+            request.rawWebhookBody = Buffer.from(buffer);
+    },
+}));
+const campaignsRouter = createCampaignsRouter({ databaseUrl, dataDir });
+app.use(campaignsRouter.publicTrackingRouter);
+// Preserve links already sent by older releases that placed the public
+// tracking route beneath the standalone UI prefix.
+app.use("/campaigns", campaignsRouter.publicTrackingRouter);
+app.use("/api/campaigns", campaignsRouter);
 if (publicDir) {
     app.use("/campaigns", express.static(resolve(publicDir), { index: "index.html", fallthrough: true }));
     app.get("/campaigns/*path", (_request, response) => response.sendFile(resolve(publicDir, "index.html")));

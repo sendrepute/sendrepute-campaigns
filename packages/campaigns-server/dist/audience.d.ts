@@ -31,6 +31,7 @@ export declare class AudienceValidationError extends Error {
     readonly status = 400;
     constructor(message: string);
 }
+export declare const RESERVED_MERGE_KEYS: Set<string>;
 export declare function validateCustomFieldDefinitions(input: unknown): CustomFieldDefinition[];
 export declare function validateCustomValues(input: unknown, definitions: CustomFieldDefinition[]): Record<string, Scalar>;
 /**
@@ -127,6 +128,12 @@ export interface AudienceSnapshot {
 }
 export declare function createAudienceSnapshot(repository: AudienceRepository, scope: string, source: AudienceSource, allowedListIds: readonly string[] | null, generatedAt?: string): Promise<AudienceSnapshot>;
 export type MissingVariablePolicy = "error" | "empty" | "keep";
+export declare function subscriberMergeVariables(subscriber: {
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    metadata?: unknown;
+}, unsubscribeUrl?: string): Record<string, unknown>;
 export declare function renderMergeVariables(template: string, variables: Record<string, unknown>, options: {
     format: "html" | "text";
     missing: MissingVariablePolicy;

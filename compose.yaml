@@ -16,6 +16,13 @@ services:
       retries: 10
       start_period: 10s
 
+  https-site-init:
+    image: busybox:1.37
+    restart: "no"
+    command: ["sh", "-c", "chown 10001:10001 /site && chmod 700 /site"]
+    volumes:
+      - campaigns-https-site:/site
+
   campaigns:
     build:
       context: .
@@ -29,13 +36,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      https-site-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://campaigns:${CAMPAIGNS_POSTGRES_PASSWORD}@postgres:5432/campaigns
       CAMPAIGNS_TRUST_PROXY: ${CAMPAIGNS_TRUST_PROXY:-false}
+      CAMPAIGNS_HTTPS_SITE_DIR: /var/lib/sendrepute-campaigns/https-site
     ports:
       - "${CAMPAIGNS_BIND_ADDRESS:-127.0.0.1}:${CAMPAIGNS_HTTP_PORT:-8080}:8080"
     volumes:
       - campaigns-data:/var/lib/sendrepute-campaigns
+      - campaigns-https-site:/var/lib/sendrepute-campaigns/https-site
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/campaigns/status').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
@@ -43,6 +54,33 @@ services:
       retries: 5
       start_period: 20s
 
+  https:
+    image: caddy:2.10.2-alpine
+    # Required to bind 80/443 and traverse the 0700 Campaigns-owned site
+    # volume; only result.json is readable by the non-root Campaigns process.
+    user: "0:0"
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on:
+      campaigns:
+        condition: service_healthy
+    environment:
+      CAMPAIGNS_DOMAIN: ${CAMPAIGNS_DOMAIN:-}
+    entrypoint: ["/bin/sh", "/etc/caddy/start-https.sh"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./start-https.sh:/etc/caddy/start-https.sh:ro
+      - campaigns-caddy-data:/data
+      - campaigns-caddy-config:/config
+      - campaigns-https-site:/run/campaigns-site
+
 volumes:
   campaigns-postgres:
   campaigns-data:
+  campaigns-caddy-data:
+  campaigns-caddy-config:
+  campaigns-https-site:

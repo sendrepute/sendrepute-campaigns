@@ -7,17 +7,19 @@ import express, { Router } from "express";
 import { Pool } from "pg";
 import { PRODUCTION_API_BASE_URL, PRODUCTION_HOSTED_BUILDER_ORIGIN, SendReputeClient, assertHostedBuilderLaunch, operationCapabilities, } from "@workspace/campaigns-bridge";
 import { createExperimentsRouter } from "./experiments.js";
+import { inspectPrivateSmtp } from "./private-smtp-readiness.js";
+import { configureSite, siteStatus } from "./https-site.js";
 import { PaidDesigns, paidDesignOperations, paidDesignScope } from "./paid-designs.js";
-import { parseSesSnsWebhook, parseTokenWebhook, sendMessage, verifyProvider, } from "@workspace/campaigns-delivery";
+import { parseSesSnsWebhook, parseTokenWebhook, verifyProviderEventWebhook, sendMessage, verifyProvider, } from "@workspace/campaigns-delivery";
 import { appendDeliveryEvent, createDeliveryReliabilityRouter, refreshCampaignDeliveryStatistics, } from "./delivery-reliability.js";
 import { createTelegramNotificationsRouter, enqueueCampaignNotification, runTelegramNotificationWorker, sendTelegramMessage, } from "./telegram-notifications.js";
-import { createAudienceRouter, createAudienceSnapshot, createPostgresAudienceRepository, compileAudiencePredicate, renderMergeVariables, validateCustomFieldDefinitions, validateCustomValues, } from "./audience.js";
+import { createAudienceRouter, createAudienceSnapshot, createPostgresAudienceRepository, compileAudiencePredicate, renderMergeVariables, subscriberMergeVariables, validateCustomFieldDefinitions, validateCustomValues, } from "./audience.js";
 import { createBrandsRouter, getBrandDefaults } from "./brands.js";
 import { cancelQueuedSubscriberJobs, createHousekeepingRouter } from "./housekeeping.js";
 import { createRulesWebhooksRouter, recordRuleEvent, runRulesWebhookWorker } from "./rules-webhooks.js";
 import { createSubscriptionCustomizationRouter, getSubscriptionCustomization, onSubscribeConfirmed, onUnsubscribe, resolveListDoubleOptIn } from "./subscription-customization.js";
-import { createCampaignTrackingLinks, createDomainsTrackingRouter, createPostgresTrackingEventRecorder } from "./domains-tracking.js";
-import { createProviderAnalyticsRouter } from "./provider-analytics.js";
+import { campaignClickDestinations, rewriteCampaignClickAnchors, createCampaignTrackingLinks, createDomainsTrackingRouter, createPublicCampaignsTrackingRouter, createPostgresTrackingEventRecorder } from "./domains-tracking.js";
+import { createProviderAnalyticsRouter, ingestProviderAnalyticsWebhook } from "./provider-analytics.js";
 import { publicSubscriptionFailure } from "./public-subscription-errors.js";
 export * from "./delivery-contract.generated.js";
 export { enqueueCampaignNotification, runTelegramNotificationWorker, sendTelegramMessage, } from "./telegram-notifications.js";
@@ -254,6 +256,9 @@ function publicUrl(value) {
     if (!["http:", "https:"].includes(result.protocol) || result.username || result.password ||
         result.search || result.hash) {
         throw http(400, "Public URL must be an HTTP(S) URL without credentials, query, or fragment");
+    }
+    if (result.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(result.hostname)) {
+        throw http(400, "Public URL must use HTTPS; plain HTTP is allowed only for local development");
     }
     return result;
 }
@@ -761,6 +766,12 @@ function validateProvider(value, secret, hasStoredSecret) {
         throw http(400, "Unsupported provider type");
     const hasSecret = (typeof secret === "string" && secret.length > 0) || (secret === undefined && hasStoredSecret);
     const metadata = value.metadata && typeof value.metadata === "object" && !Array.isArray(value.metadata) ? value.metadata : {};
+    if (metadata.allowPrivateHost !== undefined && typeof metadata.allowPrivateHost !== "boolean") {
+        throw http(400, "Private SMTP host choice must be a boolean");
+    }
+    if (metadata.allowPrivateHost === true && (type !== "smtp" || metadata.providerVariant)) {
+        throw http(400, "Private SMTP hosts require a generic SMTP provider");
+    }
     const credentials = providerCredentials(secret);
     if (type === "smtp") {
         if (typeof value.host !== "string" || !value.host.trim())
@@ -822,7 +833,7 @@ function validateProvider(value, secret, hasStoredSecret) {
 function webhookOccurredAt(value) {
     if (typeof value !== "string" && typeof value !== "number")
         return undefined;
-    const parsed = new Date(value);
+    const parsed = new Date(typeof value === "number" && value < 10_000_000_000 ? value * 1000 : value);
     return Number.isFinite(parsed.getTime()) ? parsed : undefined;
 }
 function normalizedWebhookEvents(provider, payload) {
@@ -850,20 +861,21 @@ function normalizedWebhookEvents(provider, payload) {
     const values = Array.isArray(payload) ? payload : [payload];
     return values.slice(0, 1000).map(value => {
         const item = json(value);
-        const rawType = String(item.event ?? item.type ?? item.event_type ?? "").toLowerCase();
-        const type = rawType.includes("deliver") ? "delivered"
-            : rawType.includes("open") ? "opened"
-                : rawType.includes("click") ? "clicked"
-                    : rawType.includes("complaint") || rawType.includes("spam") ? "complained"
-                        : rawType.includes("soft") || rawType.includes("defer") || rawType.includes("temporary") ? "soft_bounced"
-                            : rawType.includes("bounce") || rawType.includes("fail") ? "bounced"
-                                : rawType.includes("unsubscribe") ? "unsubscribed" : "ignored";
-        const rawEmail = item.email ?? (item.recipient && typeof item.recipient === "object" ? item.recipient.address : undefined);
+        const rawType = String(item.event ?? item.RecordType ?? item.type ?? item.event_type ?? "").toLowerCase();
+        const type = provider === "mailjet" && rawType === "sent" ? "delivered"
+            : rawType.includes("deliver") ? "delivered"
+                : rawType.includes("open") ? "opened"
+                    : rawType.includes("click") ? "clicked"
+                        : rawType.includes("complaint") || rawType.includes("spam") ? "complained"
+                            : rawType.includes("soft") || rawType.includes("defer") || rawType.includes("temporary") ? "soft_bounced"
+                                : rawType.includes("bounce") || rawType.includes("fail") ? "bounced"
+                                    : rawType.includes("unsubscribe") ? "unsubscribed" : "ignored";
+        const rawEmail = item.email ?? item.Recipient ?? item.Email ?? (item.recipient && typeof item.recipient === "object" ? item.recipient.address : undefined);
         const rawMessageId = item.MessageID ?? item.messageId ?? item.message_id ?? item["message-id"];
         const normalizedEmail = typeof rawEmail === "string" ? rawEmail.toLowerCase() : undefined;
         const messageId = rawMessageId != null ? String(rawMessageId) : undefined;
-        const occurredAt = webhookOccurredAt(item.timestamp ?? item.time ?? item.event_at ?? item.created_at);
-        return { key: hash(messageId || normalizedEmail ? `${type}:${messageId ?? ""}:${normalizedEmail ?? ""}` : JSON.stringify(item)), type, ...(normalizedEmail ? { email: normalizedEmail } : {}), ...(messageId ? { messageId } : {}), ...(occurredAt ? { occurredAt } : {}) };
+        const occurredAt = webhookOccurredAt(item.timestamp ?? item.ts_event ?? item.ts ?? item.time ?? item.event_at ?? item.created_at ?? item.DeliveredAt ?? item.ReceivedAt ?? item.BouncedAt);
+        return { key: hash(JSON.stringify(item)), type, ...(normalizedEmail ? { email: normalizedEmail } : {}), ...(messageId ? { messageId } : {}), ...(occurredAt ? { occurredAt } : {}) };
     });
 }
 function normalize(kind, input, existing) {
@@ -889,7 +901,10 @@ function normalize(kind, input, existing) {
     if (kind === "providers") {
         fields(input, ["name", "type", "enabled", "host", "port", "username", "secret", "metadata"], existing ? [] : ["name", "type", "enabled"]);
         const { secret: _secret, ...safe } = input;
-        return { ...base, ...safe, configured: input.secret !== undefined ? !!input.secret : existing?.configured ?? false, updatedAt: now };
+        const name = safe.name === undefined ? existing?.name : safe.name;
+        if (typeof name !== "string" || !name.trim())
+            throw http(400, "Provider name is required");
+        return { ...base, ...safe, name: name.trim(), configured: input.secret !== undefined ? !!input.secret : existing?.configured ?? false, updatedAt: now };
     }
     fields(input, ["name", "subject", "html", "text", "brandId", "metadata"], existing ? [] : ["name", "subject", "html"]);
     // text is required by the create contract, but an empty plain-text
@@ -1019,17 +1034,28 @@ export function createCampaignsRouter(options = {}) {
         },
         audit: (request, action, entityType, entityId, metadata) => audit(ctx, request, action, entityType, entityId, metadata),
     }));
-    const recordTrackingEvent = createPostgresTrackingEventRecorder(db, async (event) => {
+    const recordTrackingEvent = createPostgresTrackingEventRecorder(db, async (event, client) => {
         if (!event.jobId)
             return;
-        await appendDeliveryEvent(db, {
+        await appendDeliveryEvent(client, {
             jobId: event.jobId, campaignId: event.campaignId, recipientId: event.recipientId,
             type: event.type === "open" ? "provider_opened" : "provider_clicked",
             source: "system", providerEventKey: `tracking:${event.documentId}:${event.type}:${event.key}`,
             occurredAt: event.occurredAt, metadata: { trackingSource: "first_party" },
         });
         if (event.campaignId)
-            await refreshCampaignDeliveryStatistics(db, event.campaignId);
+            await refreshCampaignDeliveryStatistics(client, event.campaignId);
+    });
+    router.publicTrackingRouter = Router();
+    router.publicTrackingRouter.use((_request, _response, next) => { ctx.ready.then(() => next(), next); });
+    router.publicTrackingRouter.use(createPublicCampaignsTrackingRouter({
+        db, signingKey: ctx.key, now: ctx.now, recordEvent: recordTrackingEvent, wrap, http,
+    }));
+    router.publicTrackingRouter.use((error, _request, response, _next) => {
+        const status = error.status === 404 ? 404 : 503;
+        response.set("Cache-Control", "no-store, private");
+        response.set("Referrer-Policy", "no-referrer");
+        response.status(status).json({ error: status === 404 ? "Link not found" : "Tracking service unavailable" });
     });
     router.use(createDomainsTrackingRouter({
         db, signingKey: ctx.key, now: ctx.now, recordEvent: recordTrackingEvent,
@@ -1413,42 +1439,115 @@ export function createCampaignsRouter(options = {}) {
         assertListsAllowed(request, [listId]);
         if (!(await db.query("SELECT 1 FROM campaigns.entities WHERE kind='lists' AND id=$1", [listId])).rowCount)
             throw http(400, "Unknown list");
-        const rows = csvRows(typeof request.body === "string" ? request.body : Buffer.isBuffer(request.body) ? request.body.toString("utf8") : "");
-        const headers = rows.shift()?.map(v => v.trim().toLowerCase()) ?? [];
-        if (!headers.includes("email"))
-            throw http(400, "CSV requires an email header");
+        const source = typeof request.body === "string" ? request.body : Buffer.isBuffer(request.body) ? request.body.toString("utf8") : "";
+        // The generated text/csv client serializes a string with JSON.stringify.
+        // Accept that transport form as well as ordinary raw text/csv uploads.
+        let csvSource = source;
+        if (source.startsWith('"') && source.endsWith('"')) {
+            try {
+                const decoded = JSON.parse(source);
+                if (typeof decoded === "string")
+                    csvSource = decoded;
+            }
+            catch { /* raw quoted CSV header */ }
+        }
+        const rows = csvRows(csvSource);
+        const headers = rows.shift()?.map(v => v.replace(/^\uFEFF/, "").trim()) ?? [];
+        const scope = await installationScope(db);
+        const canonical = (header) => {
+            const builtin = { email: "email", firstname: "firstName", lastname: "lastName", name: "name", fullname: "name" };
+            const normalized = header.replace(/[\s_-]/g, "").toLowerCase();
+            return header === "__IGNORE__" ? "__IGNORE__" : builtin[normalized] ?? header;
+        };
+        const mapped = headers.map(canonical);
+        if (!mapped.includes("email") || mapped.filter(key => key === "email").length !== 1)
+            throw http(400, "CSV requires exactly one email column");
+        const active = mapped.filter(key => key !== "__IGNORE__");
+        if (new Set(active).size !== active.length)
+            throw http(400, "CSV has duplicate mapped columns");
+        if (headers.length > 100 || rows.some(values => values.length !== headers.length))
+            throw http(400, "CSV columns are inconsistent or exceed 100");
+        if (rows.length > 10000)
+            throw http(400, "CSV exceeds 10000 rows");
+        // Preserve exact case and text values of new fields. Never infer numeric types:
+        // leading zeroes in identifiers and account codes are significant.
+        const automaticKeys = active.filter(key => !["email", "name", "firstName", "lastName"].includes(key));
+        for (const key of automaticKeys) {
+            if (/^(?:constructor|prototype|__proto__|unsubscribe_url|trackingOptOut|trackingEnabled)$/i.test(key))
+                throw http(400, `Reserved CSV column: ${key}`);
+            validateCustomFieldDefinitions([{ key, label: key, type: "string" }]);
+        }
         let created = 0, updated = 0, skipped = 0;
         const errors = [];
-        const scope = await installationScope(db);
-        const definitions = await customFieldDefinitions(db, scope);
-        for (const [index, values] of rows.entries()) {
-            try {
-                const record = Object.fromEntries(headers.map((h, i) => [h, values[i] ?? ""]));
-                const address = email(record.email);
-                const action = await subscriberTransaction(db, async (tx) => {
+        await subscriberTransaction(db, async (tx) => {
+            // Subscriber imports may provision string definitions under subscribers:manage
+            // but cannot modify an existing definition or change its declared type.
+            // The transaction keeps new definitions and their imported values together.
+            await tx.query("SELECT pg_advisory_xact_lock($1)", [731946219]);
+            const before = await customFieldDefinitions(tx, scope);
+            const existing = new Set(before.map(definition => definition.key));
+            const proposed = automaticKeys.filter(key => !existing.has(key)).map(key => ({ key, label: key, type: "string" }));
+            validateCustomFieldDefinitions([...before, ...proposed]);
+            for (const definition of proposed) {
+                await tx.query("INSERT INTO campaigns.audience_custom_fields(scope,key,definition) VALUES($1,$2,$3) ON CONFLICT(scope,key) DO NOTHING", [scope, definition.key, definition]);
+            }
+            const definitions = await customFieldDefinitions(tx, scope);
+            for (const [index, values] of rows.entries()) {
+                await tx.query("SAVEPOINT import_row");
+                try {
+                    const record = Object.create(null);
+                    mapped.forEach((key, i) => { if (key !== "__IGNORE__")
+                        record[key] = values[i]; });
+                    const address = email(record.email);
+                    const custom = Object.create(null);
+                    for (const definition of definitions) {
+                        if (!Object.prototype.hasOwnProperty.call(record, definition.key) || !record[definition.key]?.trim())
+                            continue;
+                        const raw = record[definition.key];
+                        if (definition.type === "number") {
+                            if (!Number.isFinite(Number(raw)))
+                                throw http(400, `custom field ${definition.key} must be a finite number`);
+                            custom[definition.key] = Number(raw);
+                        }
+                        else if (definition.type === "boolean") {
+                            if (!["true", "false"].includes(raw.trim().toLowerCase()))
+                                throw http(400, `custom field ${definition.key} must be boolean (true or false)`);
+                            custom[definition.key] = raw.trim().toLowerCase() === "true";
+                        }
+                        else
+                            custom[definition.key] = raw;
+                    }
                     const old = await scopedSubscriber(tx, scope, address);
                     if (old) {
                         assertEntityAllowed(request, "subscribers", old);
                         const listIds = [...new Set([...(old.listIds ?? []), listId])];
-                        const value = normalize("subscribers", { firstName: record.firstname || old.firstName, lastName: record.lastname || old.lastName, listIds, scope, metadata: validateCustomValues(old.metadata ?? {}, definitions) }, old);
+                        const metadata = { ...(old.metadata ?? {}), ...custom };
+                        if (record.name?.trim())
+                            metadata.name = record.name.trim();
+                        const value = normalize("subscribers", { firstName: record.firstName?.trim() || old.firstName, lastName: record.lastName?.trim() || old.lastName, listIds, scope, metadata: validateCustomValues(metadata, definitions) }, old);
                         await tx.query("UPDATE campaigns.entities SET body=$1,updated_at=now() WHERE kind='subscribers' AND id=$2", [value, value.id]);
-                        return "updated";
+                        updated++;
                     }
-                    const value = normalize("subscribers", { email: address, firstName: record.firstname || null, lastName: record.lastname || null, listIds: [listId], scope, metadata: validateCustomValues({}, definitions) });
-                    await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES('subscribers',$1,$2)", [value.id, value]);
-                    return "created";
-                });
-                if (action === "created")
-                    created++;
-                else
-                    updated++;
+                    else {
+                        const metadata = { ...custom, ...(record.name?.trim() ? { name: record.name.trim() } : {}) };
+                        const value = normalize("subscribers", { email: address, firstName: record.firstName?.trim() || null, lastName: record.lastName?.trim() || null, listIds: [listId], scope, metadata: validateCustomValues(metadata, definitions) });
+                        await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES('subscribers',$1,$2)", [value.id, value]);
+                        created++;
+                    }
+                    await tx.query("RELEASE SAVEPOINT import_row");
+                }
+                catch (error) {
+                    await tx.query("ROLLBACK TO SAVEPOINT import_row");
+                    await tx.query("RELEASE SAVEPOINT import_row");
+                    skipped++;
+                    if (errors.length < 100)
+                        errors.push(`Row ${index + 2}: ${error.message}`);
+                }
             }
-            catch (error) {
-                skipped++;
-                if (errors.length < 100)
-                    errors.push(`Row ${index + 2}: ${error.message}`);
+            if (!created && !updated && proposed.length) {
+                await tx.query("DELETE FROM campaigns.audience_custom_fields WHERE scope=$1 AND key=ANY($2::text[])", [scope, proposed.map(item => item.key)]);
             }
-        }
+        });
         await refreshListCounts(db);
         await audit(ctx, request, "subscriber.import", "subscribers", null, { processed: rows.length, created, updated, skipped });
         response.json({ data: { processed: rows.length, created, updated, skipped, errors } });
@@ -1466,7 +1565,14 @@ export function createCampaignsRouter(options = {}) {
              WHERE NOT assigned.id=ANY($${listId ? 2 : 1}::text[])
           ) AND jsonb_array_length(body->'listIds')>0` : ""}
         ORDER BY body->>'email'`, [...(listId ? [listId] : []), ...(restricted ? [restricted] : [])]);
-        const csv = ["email,firstName,lastName,status,listIds", ...result.rows.map(({ body }) => [body.email, body.firstName, body.lastName, body.status, body.listIds.join("|")].map(csvCell).join(","))].join("\r\n");
+        const customKeys = (await customFieldDefinitions(db, await installationScope(db))).map(field => field.key);
+        const csv = [
+            ["email", "firstName", "lastName", "status", "listIds", "name", ...customKeys].join(","),
+            ...result.rows.map(({ body }) => {
+                const metadata = body.metadata ?? {};
+                return [body.email, body.firstName, body.lastName, body.status, body.listIds.join("|"), metadata.name, ...customKeys.map(key => metadata[key])].map(csvCell).join(",");
+            }),
+        ].join("\r\n");
         response.type("text/csv").setHeader("Content-Disposition", "attachment; filename=subscribers.csv");
         response.send(csv);
     }));
@@ -1617,8 +1723,6 @@ export function createCampaignsRouter(options = {}) {
                 value.segmentIds = boundedIds(value.segmentIds, "segmentIds");
                 value.excludeListIds = boundedIds(value.excludeListIds, "excludeListIds");
                 value.excludeSegmentIds = boundedIds(value.excludeSegmentIds, "excludeSegmentIds");
-                if (!value.listIds.length && !value.segmentIds.length)
-                    throw http(400, "Campaign requires unique listIds and/or segmentIds");
                 if (value.excludeListIds.length)
                     assertListsAllowed(request, value.excludeListIds);
                 await validateListIds(db, value.excludeListIds);
@@ -1630,6 +1734,9 @@ export function createCampaignsRouter(options = {}) {
             }
             if (kind === "providers")
                 validateProvider(value, input.secret, false);
+            if (kind === "providers" && value.metadata?.allowPrivateHost === true && !permitted(request, "settings:manage")) {
+                throw http(403, "Private SMTP hosts require installation settings permission");
+            }
             if (kind === "templates")
                 validateTemplate(value);
             const secret = kind === "providers" && input.secret ? encrypted(ctx.key, String(input.secret)) : null;
@@ -1732,8 +1839,6 @@ export function createCampaignsRouter(options = {}) {
                 value.segmentIds = boundedIds(value.segmentIds, "segmentIds");
                 value.excludeListIds = boundedIds(value.excludeListIds, "excludeListIds");
                 value.excludeSegmentIds = boundedIds(value.excludeSegmentIds, "excludeSegmentIds");
-                if (!ids.length && !value.segmentIds.length)
-                    throw http(400, "Campaign requires unique listIds and/or segmentIds");
                 if (value.excludeListIds.length)
                     assertListsAllowed(request, value.excludeListIds);
                 await validateListIds(db, value.excludeListIds);
@@ -1746,10 +1851,36 @@ export function createCampaignsRouter(options = {}) {
             if (kind === "providers") {
                 const stored = await db.query("SELECT 1 FROM campaigns.entities WHERE kind='providers' AND id=$1 AND secret IS NOT NULL", [id]);
                 validateProvider(value, input.secret, !!stored.rowCount);
+                if (value.metadata?.allowPrivateHost === true && !permitted(request, "settings:manage")) {
+                    throw http(403, "Private SMTP hosts require installation settings permission");
+                }
             }
             if (kind === "templates")
                 validateTemplate(value);
-            const secret = kind === "providers" && input.secret !== undefined ? input.secret ? encrypted(ctx.key, String(input.secret)) : null : undefined;
+            let replacementSecret = input.secret;
+            if (kind === "providers" && input.secret && value.type === existing.type) {
+                // Retain the dedicated callback credential across API-key rotations;
+                // the webhook must not unexpectedly stop authenticating.
+                const oldRow = await db.query("SELECT secret FROM campaigns.entities WHERE kind='providers' AND id=$1", [id]);
+                const oldCredentials = oldRow.rows[0]?.secret && providerCredentials(decrypted(ctx.key, oldRow.rows[0].secret));
+                if (oldCredentials && ["mailjet", "mailgun", "resend", "sendgrid", "postmark", "brevo"].includes(String(value.type))) {
+                    const updated = providerCredentials(input.secret);
+                    if (value.type === "mailjet" && !updated.secretKey)
+                        updated.secretKey = String(updated.password ?? input.secret);
+                    if (value.type === "postmark" && !updated.serverToken)
+                        updated.serverToken = String(updated.password ?? input.secret);
+                    if (value.type !== "postmark" && value.type !== "mailjet" && !updated.apiKey)
+                        updated.apiKey = String(updated.password ?? input.secret);
+                    delete updated.password;
+                    if (value.type === "mailjet" && !updated.apiKey && value.username)
+                        updated.apiKey = value.username;
+                    for (const name of ["webhookBasicToken", "webhookSigningKey", "webhookPublicKey"])
+                        if (typeof oldCredentials[name] === "string")
+                            updated[name] = oldCredentials[name];
+                    replacementSecret = JSON.stringify(updated);
+                }
+            }
+            const secret = kind === "providers" && input.secret !== undefined ? replacementSecret ? encrypted(ctx.key, String(replacementSecret)) : null : undefined;
             await db.query(secret === undefined ? "UPDATE campaigns.entities SET body=$3,updated_at=now() WHERE kind=$1 AND id=$2" : "UPDATE campaigns.entities SET body=$3,secret=$4,updated_at=now() WHERE kind=$1 AND id=$2", secret === undefined ? [kind, id, value] : [kind, id, value, secret]);
             await audit(ctx, request, `${singular}.update`, kind, id);
             response.json({ data: value });
@@ -1815,6 +1946,48 @@ export function createCampaignsRouter(options = {}) {
             throw http(502, "Provider verification failed");
         }
     }));
+    router.post("/providers/:providerId/private-smtp-readiness", mutation, need("providers:manage"), wrap(async (request, response) => {
+        const id = String(request.params.providerId);
+        const result = await db.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1", [id]);
+        const row = result.rows[0];
+        if (!row)
+            throw http(404, "Provider not found");
+        const metadata = row.body.metadata;
+        const brandedHost = typeof row.body.host === "string" &&
+            (/^email-smtp\.[a-z0-9-]+\.amazonaws\.com$/i.test(row.body.host) ||
+                ["smtp.sendgrid.net", "smtp.mailgun.org", "smtp.eu.mailgun.org", "smtp.resend.com", "smtp-relay.brevo.com", "in-v3.mailjet.com"].includes(row.body.host.toLowerCase()));
+        if (row.body.type !== "smtp" || metadata?.providerVariant || brandedHost)
+            throw http(400, "Private SMTP setup is only available for generic SMTP");
+        if (metadata?.allowPrivateHost === true && !permitted(request, "settings:manage"))
+            throw http(403, "Installation-settings permission required for private SMTP hosts");
+        if (!row.secret)
+            throw http(409, "Save SMTP credentials before checking readiness");
+        const input = json(request.body);
+        fields(input, ["domain", "outboundIp", "dkimSelector"], ["domain"]);
+        if (typeof input.domain !== "string" || (input.outboundIp !== undefined && typeof input.outboundIp !== "string") ||
+            (input.dkimSelector !== undefined && typeof input.dkimSelector !== "string"))
+            throw http(400, "Invalid readiness input");
+        await consumePublicBudget(db, `private-smtp:${id}`, 6, "1 minute");
+        const checks = await inspectPrivateSmtp({
+            domain: input.domain,
+            ...(input.outboundIp ? { outboundIp: input.outboundIp } : {}),
+            ...(input.dkimSelector ? { dkimSelector: input.dkimSelector } : {}),
+        });
+        try {
+            const verification = await ctx.verify(deliveryConfig(row.body, decrypted(ctx.key, row.secret)), { timeoutMs: 5000 });
+            checks.unshift(verification.ok && verification.verification !== "inconclusive"
+                ? { key: "smtp", status: "pass", detail: "SMTP connection, TLS and configured authentication verified without sending mail.", repair: "No action needed. Message acceptance and inbox delivery were not tested." }
+                : { key: "smtp", status: "inconclusive", detail: "SMTP verification was inconclusive; no message was sent.", repair: "Check your SMTP server connection and authentication logs, then recheck." });
+        }
+        catch (error) {
+            const deterministic = ["SMTP_AUTH_FAILED", "SMTP_TLS_FAILED", "SMTP_SSRF_BLOCKED", "INVALID_CONFIG"].includes(String(error.code));
+            checks.unshift(deterministic
+                ? { key: "smtp", status: "needs-fix", detail: "SMTP authentication, TLS or destination settings failed.", repair: "Check the saved host, port, TLS mode and credentials on your SMTP server, then recheck." }
+                : { key: "smtp", status: "inconclusive", detail: "SMTP verification did not complete; connectivity could not be confirmed.", repair: "Check SMTP network availability and server logs, then recheck." });
+        }
+        await audit(ctx, request, "provider.private_smtp_readiness", "providers", id, { statuses: checks.map(item => [item.key, item.status]) });
+        response.json({ data: { checks } });
+    }));
     router.post("/hosted-builder/launch", mutation, need("templates:manage"), wrap(async (request, response) => {
         const body = json(request.body);
         fields(body, ["state", "initialMjml", "mode", "vipAccessId", "initialDocument"], ["state"]);
@@ -1849,23 +2022,188 @@ export function createCampaignsRouter(options = {}) {
         await audit(ctx, request, "hosted_builder.launch", "templates", null);
         response.status(201).json({ data: launch });
     }));
+    // A deliberate authenticated action: never expose the callback password in
+    // provider GETs, status responses, logs, URLs, or the public demo.
+    router.post("/providers/:providerId/mailjet-webhook-credentials", mutation, need("providers:manage"), wrap(async (request, response) => {
+        const id = String(request.params.providerId);
+        const tx = await db.connect?.();
+        if (!tx)
+            throw http(500, "Webhook provisioning requires a transaction-capable PostgreSQL pool");
+        try {
+            await tx.query("BEGIN");
+            const row = (await tx.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1 FOR UPDATE", [id])).rows[0];
+            if (!row || row.body.type !== "mailjet")
+                throw http(404, "Mailjet provider not found");
+            if (!row.secret)
+                throw http(409, "Mailjet provider credentials are not configured");
+            const installation = (await tx.query("SELECT settings FROM campaigns.installation")).rows[0];
+            let base;
+            try {
+                base = publicUrl(installation?.settings.publicUrl);
+            }
+            catch {
+                throw http(409, "Configure a public HTTPS installation URL before provisioning the webhook");
+            }
+            if (base.protocol !== "https:" || base.port || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(base.hostname) ||
+                base.hostname.endsWith(".localhost") || base.hostname.endsWith(".local")) {
+                throw http(409, "A publicly reachable HTTPS installation URL is required");
+            }
+            const rawSecret = decrypted(ctx.key, row.secret);
+            const credentials = providerCredentials(rawSecret);
+            // Preserve old single-string provider secrets as Mailjet's API secret.
+            if (!credentials.secretKey)
+                credentials.secretKey = String(credentials.password ?? rawSecret);
+            delete credentials.password;
+            if (!credentials.apiKey && row.body.username)
+                credentials.apiKey = row.body.username;
+            if (!credentials.webhookBasicToken) {
+                credentials.webhookBasicToken = randomBytes(32).toString("base64url");
+                await tx.query("UPDATE campaigns.entities SET secret=$2,updated_at=now() WHERE kind='providers' AND id=$1", [id, encrypted(ctx.key, JSON.stringify(credentials))]);
+            }
+            const url = new URL(`/api/campaigns/webhooks/${encodeURIComponent(id)}`, base.origin).toString();
+            await audit({ ...ctx, db: tx }, request, "provider.mailjet_webhook.credentials_revealed", "providers", id);
+            await tx.query("COMMIT");
+            response.set("Cache-Control", "no-store").json({ data: { url, username: "mailjet", password: credentials.webhookBasicToken } });
+        }
+        catch (error) {
+            await tx.query("ROLLBACK");
+            throw error;
+        }
+        finally {
+            tx.release();
+        }
+    }));
+    router.post("/providers/:providerId/event-webhook-configuration", mutation, need("providers:manage"), wrap(async (request, response) => {
+        const id = String(request.params.providerId);
+        const type = request.body?.type;
+        const key = request.body?.key;
+        if (!["mailgun", "resend", "sendgrid"].includes(type) || typeof key !== "string" || key.length < 16 || key.length > 4096)
+            throw http(400, "A valid provider signing key or public key is required");
+        if (type === "resend" && !/^whsec_[A-Za-z0-9+/=_-]{20,}$/.test(key))
+            throw http(400, "Enter the Resend webhook signing secret (whsec_)");
+        if (type === "sendgrid" && !/^[A-Za-z0-9+/=\s-]+$/.test(key))
+            throw http(400, "Enter the SendGrid ECDSA verification public key");
+        const tx = await db.connect?.();
+        if (!tx)
+            throw http(500, "Webhook provisioning requires a transaction-capable PostgreSQL pool");
+        try {
+            await tx.query("BEGIN");
+            const row = (await tx.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1 FOR UPDATE", [id])).rows[0];
+            if (!row || row.body.type !== type)
+                throw http(404, "Provider not found");
+            if (!row.secret)
+                throw http(409, "Provider credentials are not configured");
+            const installation = (await tx.query("SELECT settings FROM campaigns.installation")).rows[0];
+            let base;
+            try {
+                base = publicUrl(installation?.settings.publicUrl);
+            }
+            catch {
+                throw http(409, "Configure a public HTTPS installation URL before provisioning the webhook");
+            }
+            if (base.protocol !== "https:" || base.port || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(base.hostname) ||
+                base.hostname.endsWith(".localhost") || base.hostname.endsWith(".local"))
+                throw http(409, "A publicly reachable HTTPS installation URL is required");
+            const raw = decrypted(ctx.key, row.secret);
+            const credentials = providerCredentials(raw);
+            if (!credentials.apiKey)
+                credentials.apiKey = raw;
+            credentials[type === "sendgrid" ? "webhookPublicKey" : "webhookSigningKey"] = key;
+            await tx.query("UPDATE campaigns.entities SET secret=$2,updated_at=now() WHERE kind='providers' AND id=$1", [id, encrypted(ctx.key, JSON.stringify(credentials))]);
+            await audit({ ...ctx, db: tx }, request, "provider.event_webhook.configure", "providers", id, { type });
+            await tx.query("COMMIT");
+            response.set("Cache-Control", "no-store").json({ data: { url: new URL(`/api/campaigns/webhooks/${encodeURIComponent(id)}`, base.origin).toString() } });
+        }
+        catch (error) {
+            await tx.query("ROLLBACK");
+            throw error;
+        }
+        finally {
+            tx.release();
+        }
+    }));
+    router.post("/providers/:providerId/basic-webhook-credentials", mutation, need("providers:manage"), wrap(async (request, response) => {
+        const id = String(request.params.providerId);
+        const tx = await db.connect?.();
+        if (!tx)
+            throw http(500, "Webhook provisioning requires a transaction-capable PostgreSQL pool");
+        try {
+            await tx.query("BEGIN");
+            const row = (await tx.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1 FOR UPDATE", [id])).rows[0];
+            if (!row || !["postmark", "brevo"].includes(String(row.body.type)))
+                throw http(404, "Provider not found");
+            if (!row.secret)
+                throw http(409, "Provider credentials are not configured");
+            const installation = (await tx.query("SELECT settings FROM campaigns.installation")).rows[0];
+            let base;
+            try {
+                base = publicUrl(installation?.settings.publicUrl);
+            }
+            catch {
+                throw http(409, "Configure a public HTTPS installation URL before provisioning the webhook");
+            }
+            if (base.protocol !== "https:" || base.port || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(base.hostname) ||
+                base.hostname.endsWith(".localhost") || base.hostname.endsWith(".local"))
+                throw http(409, "A publicly reachable HTTPS installation URL is required");
+            const raw = decrypted(ctx.key, row.secret);
+            const credentials = providerCredentials(raw);
+            if (row.body.type === "postmark") {
+                if (!credentials.serverToken)
+                    credentials.serverToken = String(credentials.password ?? raw);
+            }
+            else if (!credentials.apiKey)
+                credentials.apiKey = String(credentials.password ?? raw);
+            delete credentials.password;
+            if (!credentials.webhookBasicToken) {
+                credentials.webhookBasicToken = randomBytes(32).toString("base64url");
+                await tx.query("UPDATE campaigns.entities SET secret=$2,updated_at=now() WHERE kind='providers' AND id=$1", [id, encrypted(ctx.key, JSON.stringify(credentials))]);
+            }
+            await audit({ ...ctx, db: tx }, request, "provider.basic_webhook.credentials_revealed", "providers", id);
+            await tx.query("COMMIT");
+            response.set("Cache-Control", "no-store").json({ data: {
+                    url: new URL(`/api/campaigns/webhooks/${encodeURIComponent(id)}`, base.origin).toString(),
+                    username: String(row.body.type), password: credentials.webhookBasicToken,
+                } });
+        }
+        catch (error) {
+            await tx.query("ROLLBACK");
+            throw error;
+        }
+        finally {
+            tx.release();
+        }
+    }));
     router.post("/webhooks/:providerId", wrap(async (request, response) => {
         const id = String(request.params.providerId);
         const result = await db.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1 AND body->>'enabled'='true'", [id]);
         const row = result.rows[0];
         if (!row?.secret)
             throw http(401, "Invalid webhook authentication");
-        const raw = JSON.stringify(request.body);
+        const captured = request.rawWebhookBody;
+        // Mailjet's integer IDs must never be reconstructed from parsed JS numbers.
+        if (row.body.type === "mailjet" && !captured)
+            throw http(500, "Raw webhook body capture is required before JSON parsing");
+        const raw = captured ? captured.toString("utf8") : JSON.stringify(request.body);
         if (Buffer.byteLength(raw) > 1_048_576)
             throw http(413, "Webhook body is too large");
         const type = String(row.body.type);
         let payload;
-        if (type === "mailjet" || type === "smtpcom") {
-            const bearer = request.get("authorization")?.match(/^Bearer ([^\s]+)$/i)?.[1] ?? "";
+        if (type === "mailjet" || type === "smtpcom" || type === "postmark" || type === "brevo") {
+            const authorization = request.get("authorization") ?? "";
+            const bearer = authorization.match(/^Bearer ([^\s]+)$/i)?.[1] ?? "";
             const credentials = providerCredentials(decrypted(ctx.key, row.secret));
-            const expected = String(credentials.webhookToken ?? "");
+            let actual = bearer;
+            let expected = ["postmark", "brevo"].includes(type) ? "" : String(credentials.webhookToken ?? "");
+            if (["mailjet", "postmark", "brevo"].includes(type) && /^Basic [A-Za-z0-9+/=]+$/i.test(authorization)) {
+                const decoded = Buffer.from(authorization.slice(6), "base64").toString("utf8");
+                const separator = decoded.indexOf(":");
+                if (separator >= 0 && decoded.slice(0, separator) === type) {
+                    actual = decoded.slice(separator + 1);
+                    expected = String(credentials.webhookBasicToken ?? "");
+                }
+            }
             try {
-                payload = parseTokenWebhook(type, raw, bearer, expected);
+                payload = parseTokenWebhook(type, raw, actual, expected);
             }
             catch {
                 throw http(401, "Invalid webhook authentication");
@@ -1896,6 +2234,23 @@ export function createCampaignsRouter(options = {}) {
                         token: envelope.Type === "SubscriptionConfirmation" ? envelope.Token : undefined,
                     } });
                 return;
+            }
+        }
+        else if (type === "mailgun" || type === "resend" || type === "sendgrid") {
+            if (!captured)
+                throw http(500, "Raw webhook body capture is required");
+            const credentials = providerCredentials(decrypted(ctx.key, row.secret));
+            try {
+                payload = verifyProviderEventWebhook(type, captured, {
+                    "svix-id": request.get("svix-id"),
+                    "svix-timestamp": request.get("svix-timestamp"),
+                    "svix-signature": request.get("svix-signature"),
+                    "x-twilio-email-event-webhook-timestamp": request.get("x-twilio-email-event-webhook-timestamp"),
+                    "x-twilio-email-event-webhook-signature": request.get("x-twilio-email-event-webhook-signature"),
+                }, String(credentials[type === "sendgrid" ? "webhookPublicKey" : "webhookSigningKey"] ?? ""));
+            }
+            catch {
+                throw http(401, "Invalid webhook signature");
             }
         }
         else {
@@ -1949,6 +2304,8 @@ export function createCampaignsRouter(options = {}) {
         }
         if (accepted)
             await refreshListCounts(db);
+        if (["mailjet", "ses", "mailgun", "resend", "sendgrid", "smtpcom", "postmark", "brevo"].includes(type))
+            await ingestProviderAnalyticsWebhook(db, id, type, payload);
         response.status(202).json({ data: { ok: true, id, message: `${accepted} new event(s) accepted` } });
     }));
     const campaignAction = (action) => wrap(async (request, response) => {
@@ -1977,6 +2334,43 @@ export function createCampaignsRouter(options = {}) {
         await audit(ctx, request, `campaign.${action}`, "campaigns", id);
         response.json({ data: campaign });
     });
+    router.get("/campaigns/:campaignId/merge-preview", need("read"), wrap(async (request, response) => {
+        response.set("Cache-Control", "no-store, private");
+        const campaign = await getEntity(ctx, "campaigns", String(request.params.campaignId));
+        assertEntityAllowed(request, "campaigns", campaign);
+        const audience = await resolveCampaignAudience(audienceRepository, await installationScope(db), {
+            listIds: campaign.listIds, segmentIds: campaign.segmentIds,
+            excludeListIds: campaign.excludeListIds, excludeSegmentIds: campaign.excludeSegmentIds,
+        }, restrictedLists(request), ctx.now().toISOString());
+        const holds = audience.recipients.length ? await db.query(`SELECT subscriber_id::text id FROM campaigns.subscriber_reconciliations WHERE subscriber_id=ANY($1::uuid[])
+       UNION SELECT recipient_id::text id FROM campaigns.delivery_events
+       WHERE recipient_id=ANY($1::uuid[]) AND event_type IN ('provider_bounced','provider_complained')`, [audience.recipientIds]) : { rows: [] };
+        const heldIds = new Set(holds.rows.map(row => row.id));
+        const eligible = audience.recipients.filter(item => !heldIds.has(item.id) && item.hardBounced !== true && item.complained !== true);
+        const selectedId = request.query.recipientId ? String(request.query.recipientId) : null;
+        if (selectedId && !ENTITY_UUID.test(selectedId))
+            throw http(400, "Invalid recipient ID");
+        const subscriber = selectedId ? eligible.find(item => item.id === selectedId) : eligible[0];
+        if (selectedId && !subscriber)
+            throw http(404, "Recipient is not eligible for this campaign");
+        const candidates = eligible.slice(0, 25).map(item => ({ id: item.id, email: item.email }));
+        if (subscriber && !candidates.some(item => item.id === subscriber.id))
+            candidates.push({ id: subscriber.id, email: subscriber.email });
+        if (!subscriber) {
+            response.json({ data: { recipientCount: 0, candidates, recipient: null, subject: null, html: null, text: null } });
+            return;
+        }
+        const variables = subscriberMergeVariables(subscriber, "{{unsubscribe_url}}");
+        const missing = String(campaign.mergeMissingPolicy ?? "empty");
+        const template = await getEntity(ctx, "templates", String(campaign.templateId));
+        response.json({ data: {
+                recipientCount: eligible.length, candidates,
+                recipient: { id: subscriber.id, email: subscriber.email },
+                subject: renderMergeVariables(String(campaign.subject), variables, { format: "text", missing }),
+                html: renderMergeVariables(String(template.html ?? ""), variables, { format: "html", missing }),
+                text: renderMergeVariables(String(template.text ?? ""), variables, { format: "text", missing }),
+            } });
+    }));
     router.post("/campaigns/:campaignId/schedule", mutation, need("campaigns:send"), wrap(async (request, response) => {
         const body = json(request.body);
         fields(body, ["scheduledAt"], ["scheduledAt"]);
@@ -1984,6 +2378,8 @@ export function createCampaignsRouter(options = {}) {
         assertEntityAllowed(request, "campaigns", campaign);
         if (campaign.status !== "draft")
             throw http(409, "Only draft campaigns can be scheduled");
+        if (!campaign.listIds.length && !campaign.segmentIds.length)
+            throw http(400, "Select at least one list or segment before scheduling");
         const scheduledAt = date(body.scheduledAt);
         if (new Date(scheduledAt) <= ctx.now())
             throw http(400, "Scheduled time must be in the future");
@@ -2009,8 +2405,7 @@ export function createCampaignsRouter(options = {}) {
         }, restrictedLists(request), ctx.now().toISOString());
         const template = await getEntity(ctx, "templates", String(campaign.templateId));
         for (const subscriber of audience.recipients) {
-            const custom = subscriber.metadata && typeof subscriber.metadata === "object" && !Array.isArray(subscriber.metadata) ? subscriber.metadata : {};
-            const variables = { ...custom, email: subscriber.email, firstName: subscriber.firstName ?? "", lastName: subscriber.lastName ?? "", name: [subscriber.firstName, subscriber.lastName].filter(Boolean).join(" "), unsubscribe_url: "{{unsubscribe_url}}" };
+            const variables = subscriberMergeVariables(subscriber, "{{unsubscribe_url}}");
             const missing = String(campaign.mergeMissingPolicy ?? "empty");
             const frozenCampaign = { ...campaign, subject: renderMergeVariables(String(campaign.subject), variables, { format: "text", missing }) };
             const frozenTemplate = {
@@ -2300,6 +2695,23 @@ export function createCampaignsRouter(options = {}) {
             throw http(503, "Not installed");
         response.json({ data: result.rows[0].settings });
     }));
+    router.get("/settings/https", need("settings:manage"), wrap(async (_request, response) => {
+        response.json({ data: siteStatus() });
+    }));
+    router.put("/settings/https", mutation, need("settings:manage"), wrap(async (request, response) => {
+        const body = json(request.body);
+        fields(body, ["domain", "mode", "certificate", "privateKey"], ["domain", "mode"]);
+        // Never accept a private key over an unencrypted public connection. A local
+        // loopback bootstrap is the only HTTP exception, and cannot be accessed remotely.
+        if (body.privateKey !== undefined && !request.secure &&
+            !(/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(request.get("host") ?? "") &&
+                ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.socket.remoteAddress ?? "")))
+            throw http(403, "Upload certificates over HTTPS or from localhost only");
+        await consumePublicBudget(db, "settings:https-site", 10, "1 hour");
+        const state = configureSite({ domain: body.domain, mode: body.mode, certificate: body.certificate, privateKey: body.privateKey });
+        await audit(ctx, request, "settings.https.update", "settings", null, { domain: state.domain, mode: state.mode });
+        response.status(202).json({ data: state });
+    }));
     router.patch("/settings", mutation, need("settings:manage"), wrap(async (request, response) => {
         const body = json(request.body);
         fields(body, ["instanceName", "publicUrl", "defaultFromName", "defaultFromEmail", "doubleOptIn", "trackingEnabled", "timezone", "metadata"]);
@@ -2351,7 +2763,7 @@ export function createCampaignsRouter(options = {}) {
         const operation = String(body.operation);
         // Recovery must go through local intent ownership checks. The bridge's
         // transport operation is internal, not an account-wide result oracle.
-        if (operation === "customerGetPaidResult")
+        if (["customerGetPaidResult", "customerResolvePaidResult", "customerPaidResultIdentity"].includes(operation))
             throw http(403, "Use the account- and owner-scoped /paid-designs recovery endpoint");
         const capability = operationCapabilities[operation];
         if (!capability)
@@ -2389,7 +2801,19 @@ export function createCampaignsRouter(options = {}) {
         const bridge = ctx.bridgeFactory(item.secret);
         return new PaidDesigns(db, bridge, paidDesignScope(item.secret), request.user.id, id => bridge.execute("customerGetPaidResult", { path: { recoveryId: id } }));
     }
+    function paidDesignCursor(raw) {
+        if (raw === undefined)
+            return undefined;
+        if (typeof raw !== "string" || raw.length > 80)
+            throw http(400, "Invalid paid design history cursor");
+        const [createdAt, id, extra] = raw.split("|");
+        if (extra !== undefined || !createdAt || !id || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(createdAt) ||
+            !Number.isFinite(Date.parse(createdAt)) || !ENTITY_UUID.test(id))
+            throw http(400, "Invalid paid design history cursor");
+        return { createdAt, id };
+    }
     router.get("/paid-designs", need("read"), need("api:use"), need("templates:manage"), wrap(async (request, response) => {
+        const cursor = paidDesignCursor(request.query.cursor);
         const item = await connection(ctx);
         if (!item)
             throw http(503, "Not installed");
@@ -2399,7 +2823,97 @@ export function createCampaignsRouter(options = {}) {
         const bridge = ctx.bridgeFactory(item.secret);
         const store = new PaidDesigns(db, bridge, paidDesignScope(item.secret), request.user.id, id => bridge.execute("customerGetPaidResult", { path: { recoveryId: id } }));
         response.setHeader("Cache-Control", "no-store");
-        response.json({ ...await store.list(), identity });
+        response.json({ ...await store.list(undefined, false, cursor), identity });
+    }));
+    // Operator view is limited to this installation's current central credential.
+    // Never expose prompts, canonical source, account secrets or another account.
+    router.get("/paid-designs/review", need("connection:manage"), wrap(async (request, response) => {
+        const cursor = paidDesignCursor(request.query.cursor);
+        const item = await connection(ctx);
+        if (!item)
+            throw http(503, "Not installed");
+        const rows = await db.query(`SELECT p.id,p.owner_id,p.status,p.created_at,p.recovery_checks,p.last_recovery_check_at,p.recovery_reason
+       FROM campaigns.paid_designs p WHERE p.scope=$1 AND p.template_deleted_at IS NULL
+         AND ((p.status='pending' AND p.recovery_checks>=3) OR
+           (p.status='succeeded' AND NOT EXISTS(SELECT 1 FROM campaigns.entities e
+             WHERE e.kind='templates' AND e.id=p.id)))
+         AND ($2::timestamptz IS NULL OR (p.created_at,p.id)<($2::timestamptz,$3::uuid))
+       ORDER BY p.created_at DESC,p.id DESC LIMIT 101`, [paidDesignScope(item.secret), cursor?.createdAt ?? null, cursor?.id ?? null]);
+        const page = rows.rows.slice(0, 100), tail = page.at(-1);
+        response.setHeader("Cache-Control", "no-store");
+        response.json({ items: page.map(row => ({ id: row.id, ownerId: row.owner_id, status: row.status, checks: row.recovery_checks,
+                lastCheckedAt: row.last_recovery_check_at, reason: row.recovery_reason })),
+            ...(rows.rows.length > 100 && tail ? { nextCursor: `${tail.created_at.toISOString()}|${tail.id}` } : {}) });
+    }));
+    router.post("/paid-designs/review/:id/restore-source", mutation, need("connection:manage"), wrap(async (request, response) => {
+        const id = String(request.params.id);
+        if (!ENTITY_UUID.test(id))
+            throw http(400, "Invalid paid design reference");
+        const item = await connection(ctx);
+        if (!item)
+            throw http(503, "Not installed");
+        const scope = paidDesignScope(item.secret);
+        const row = (await db.query("SELECT owner_id FROM campaigns.paid_designs WHERE id=$1 AND scope=$2 AND status='succeeded' AND template_deleted_at IS NULL", [id, scope])).rows[0];
+        if (!row)
+            throw http(404, "Verified paid design not found for this connection");
+        const outcome = await new PaidDesigns(db, ctx.bridgeFactory(item.secret), scope, row.owner_id).restoreSavedSource(id);
+        await audit(ctx, request, "paid-design.review.restore-source", "paid-design", id, { outcome });
+        response.setHeader("Cache-Control", "no-store");
+        response.json({ data: { outcome } });
+    }));
+    router.post("/paid-designs/review/:id/check", mutation, need("connection:manage"), wrap(async (request, response) => {
+        const id = String(request.params.id);
+        if (!ENTITY_UUID.test(id))
+            throw http(400, "Invalid paid design reference");
+        const item = await connection(ctx);
+        if (!item)
+            throw http(503, "Not installed");
+        const scope = paidDesignScope(item.secret);
+        const row = (await db.query("SELECT owner_id FROM campaigns.paid_designs WHERE id=$1 AND scope=$2 AND status='pending' AND recovery_checks>=3", [id, scope])).rows[0];
+        if (!row)
+            throw http(404, "Reviewable paid design not found for this connection");
+        const bridge = ctx.bridgeFactory(item.secret);
+        const store = new PaidDesigns(db, bridge, scope, row.owner_id, recoveryId => bridge.execute("customerGetPaidResult", { path: { recoveryId } }));
+        // One operator check per day, still read-only. Even operator review cannot
+        // settle/refund without authoritative evidence or initiate another debit.
+        const result = await store.list(id, true);
+        await audit(ctx, request, "paid-design.review.check", "paid-design", id, { outcome: result.items[0]?.status ?? "not_found" });
+        response.setHeader("Cache-Control", "no-store");
+        response.json({ data: { id, status: result.items[0]?.status ?? "needs_review", checks: result.items[0]?.checks,
+                lastCheckedAt: result.items[0]?.lastCheckedAt, reason: result.items[0]?.reason } });
+    }));
+    router.post("/paid-designs/review/:id/resolve", mutation, need("connection:manage"), wrap(async (request, response) => {
+        const id = String(request.params.id), reason = request.body?.reason;
+        if (!ENTITY_UUID.test(id) || typeof reason !== "string" || !reason.trim() || reason.length > 500 ||
+            Object.keys(request.body).some(key => key !== "reason"))
+            throw http(400, "A reference and resolution reason (1–500 characters) are required");
+        const item = await connection(ctx);
+        if (!item)
+            throw http(503, "Not installed");
+        const scope = paidDesignScope(item.secret);
+        const row = (await db.query("SELECT owner_id FROM campaigns.paid_designs WHERE id=$1 AND scope=$2 AND status='pending' AND template_deleted_at IS NULL", [id, scope])).rows[0];
+        if (!row)
+            throw http(404, "Unresolved payment not found for this connection");
+        // Commit the operator's intent before contacting central. Central performs
+        // its own credential-scoped audit and fencing; there is no local override.
+        await audit(ctx, request, "paid-design.review.resolve.requested", "paid-design", id, { reason: reason.trim() });
+        try {
+            await new PaidDesigns(db, ctx.bridgeFactory(item.secret), scope, row.owner_id).resolve(id, reason);
+            await audit(ctx, request, "paid-design.review.resolve", "paid-design", id, { outcome: "verified" });
+            response.setHeader("Cache-Control", "no-store");
+            response.json({ data: { id, outcome: "verified" } });
+        }
+        catch (error) {
+            await audit(ctx, request, "paid-design.review.resolve", "paid-design", id, { outcome: "unresolved" });
+            throw error;
+        }
+    }));
+    router.post("/paid-designs/:designId/restore-source", mutation, need("api:use"), need("templates:manage"), wrap(async (request, response) => {
+        const outcome = await (await paidStore(request)).restoreSavedSource(String(request.params.designId));
+        if (outcome === "restored")
+            await audit(ctx, request, "paid_design.restore_source", "templates", String(request.params.designId));
+        response.setHeader("Cache-Control", "no-store");
+        response.json({ data: { outcome } });
     }));
     router.post("/backup/export", mutation, need("*"), wrap(async (request, response) => {
         if ((await db.query("SELECT 1 FROM campaigns.subscriber_reconciliations LIMIT 1")).rowCount)
@@ -2587,9 +3101,17 @@ export function createCampaignsRouter(options = {}) {
                 const existing = await tx.query("SELECT scope,owner_id,operation,input FROM campaigns.paid_designs WHERE id=$1", [row.id]);
                 if (existing.rows[0] && (existing.rows[0].scope !== row.scope || existing.rows[0].owner_id !== row.owner_id || existing.rows[0].operation !== row.operation))
                     throw http(409, "Paid design backup identity conflict");
-                await tx.query(`INSERT INTO campaigns.paid_designs(id,scope,owner_id,operation,input,source,status,result,error,created_at,updated_at,template_deleted_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(id) DO UPDATE
-          SET template_deleted_at=COALESCE(campaigns.paid_designs.template_deleted_at,EXCLUDED.template_deleted_at)`, [row.id, row.scope, row.owner_id, row.operation, row.input, row.source ?? null, row.status, row.result ?? null, row.error ?? null, row.created_at, row.updated_at, row.template_deleted_at ?? null]);
+                await tx.query(`INSERT INTO campaigns.paid_designs(id,scope,owner_id,operation,input,source,status,result,error,created_at,updated_at,template_deleted_at,recovery_checks,last_recovery_check_at,recovery_reason,central_account_id,central_credential_id,settlement)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT(id) DO UPDATE
+          SET template_deleted_at=COALESCE(campaigns.paid_designs.template_deleted_at,EXCLUDED.template_deleted_at),
+              recovery_checks=greatest(campaigns.paid_designs.recovery_checks,EXCLUDED.recovery_checks),
+              last_recovery_check_at=greatest(campaigns.paid_designs.last_recovery_check_at,EXCLUDED.last_recovery_check_at),
+              recovery_reason=CASE WHEN EXCLUDED.recovery_checks>campaigns.paid_designs.recovery_checks
+                THEN EXCLUDED.recovery_reason ELSE campaigns.paid_designs.recovery_reason END`, 
+                // An imported JSON claim is not authenticated no-charge evidence.
+                // Existing local terminal rows remain untouched by ON CONFLICT; newly
+                // restored failed rows must obtain fresh central verification.
+                [row.id, row.scope, row.owner_id, row.operation, row.input, row.source ?? null, row.status === "failed" ? "pending" : row.status, row.result ?? null, row.status === "failed" ? "Restored payment outcome requires fresh central verification; do not purchase again." : row.error ?? null, row.created_at, row.updated_at, row.template_deleted_at ?? null, row.recovery_checks ?? 0, row.last_recovery_check_at ?? null, row.status === "failed" ? "RESTORED_REQUIRES_VERIFICATION" : row.recovery_reason ?? null, row.central_account_id ?? null, row.central_credential_id ?? null, row.settlement ?? null]);
             }
             const removedTemplates = new Set((await tx.query("SELECT id FROM campaigns.paid_designs WHERE template_deleted_at IS NOT NULL")).rows.map(row => row.id));
             if (all.some(row => row.kind === "campaigns" && removedTemplates.has(String(row.value.templateId))) ||
@@ -2602,7 +3124,10 @@ export function createCampaignsRouter(options = {}) {
                 await tx.query(`INSERT INTO campaigns.brands
         (id,scope,name,logo_url,color,default_from_name,default_from_email,default_reply_to)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, [brand.id, scope, brand.name, brand.logoUrl ?? null, brand.color ?? null, brand.defaultFromName ?? null, brand.defaultFromEmail ?? null, brand.defaultReplyTo ?? null]);
-            for (const row of all) {
+            // The database rejects campaign inserts until their template exists.
+            // Retained paid templates also have to be restored before campaigns that
+            // reference them; do not relax the database guard or replay delivery.
+            for (const row of all.filter(row => row.kind !== "campaigns")) {
                 const value = row.kind === "subscribers" ? { ...row.value, scope } : row.value;
                 if (row.kind === "templates" && removedTemplates.has(String(value.id)))
                     continue;
@@ -2614,6 +3139,9 @@ export function createCampaignsRouter(options = {}) {
                 if (removedTemplates.has(row.id))
                     continue;
                 await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES('templates',$1,$2) ON CONFLICT(kind,id) DO UPDATE SET body=EXCLUDED.body", [row.id, row.body]);
+            }
+            for (const row of all.filter(row => row.kind === "campaigns")) {
+                await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES($1,$2,$3)", [row.kind, row.value.id, row.value]);
             }
             await tx.query("DELETE FROM campaigns.audience_segments WHERE scope=$1", [scope]);
             await tx.query("DELETE FROM campaigns.audience_custom_fields WHERE scope=$1", [scope]);
@@ -2961,7 +3489,10 @@ export function createCampaignsRouter(options = {}) {
         audit: (request, action, entityType, entityId, metadata) => audit(ctx, request, action, entityType, entityId, metadata),
     }));
     router.use((error, request, response, _next) => {
-        const status = error.status && error.status >= 400 && error.status <= 599 ? error.status : 500;
+        const providerNameConflict = error.code === "23505" && error.constraint === "provider_name_identity";
+        const providerNameMissing = error.code === "23514" && error.constraint === "provider_name_required";
+        const status = providerNameConflict ? 409 : providerNameMissing ? 400
+            : error.status && error.status >= 400 && error.status <= 599 ? error.status : 500;
         if (request.path === "/public/subscribe" || request.path === "/public/subscribe/confirm" ||
             request.path === "/public/unsubscribe" || request.path === "/public/subscription-status" ||
             /^\/public\/lists\/[^/]+\/subscription-customization$/.test(request.path)) {
@@ -2979,8 +3510,8 @@ export function createCampaignsRouter(options = {}) {
             response.set("Retry-After", String(error.retryAfterSeconds));
         }
         response.status(status).json({
-            error: status === 500 ? "Internal server error" : error.message,
-            ...(error.code ? { code: error.code } : {}),
+            error: providerNameConflict ? "Provider name already exists" : providerNameMissing ? "Provider name is required" : status === 500 ? "Internal server error" : error.message,
+            ...(providerNameConflict ? { code: "PROVIDER_NAME_EXISTS" } : providerNameMissing ? { code: "PROVIDER_NAME_REQUIRED" } : error.code ? { code: error.code } : {}),
             ...(error.requestId ? { requestId: error.requestId } : {}),
             ...(status === 429 && Number.isInteger(error.retryAfterSeconds) ? { retryAfterSeconds: error.retryAfterSeconds } : {}),
             ...(error.requiredScopes ? { requiredScopes: error.requiredScopes } : {}),
@@ -2988,11 +3519,16 @@ export function createCampaignsRouter(options = {}) {
     });
     return router;
 }
+export function campaignsWorkerDatabaseUrl(options = {}, environment = process.env) {
+    // The mounted router and the scheduler must use the same database when the
+    // integrated API isolates Campaigns with CAMPAIGNS_DATABASE_NAME.
+    return options.databaseUrl ?? campaignsDatabaseUrl(environment);
+}
 export function startCampaignsWorker(options = {}) {
     const intervalMs = options.intervalMs ?? 5000;
     if (!Number.isFinite(intervalMs) || intervalMs < 1000)
         throw new Error("Campaign worker interval must be at least 1000ms");
-    const pool = options.pool ?? new Pool({ connectionString: options.databaseUrl ?? process.env.DATABASE_URL, max: 4 });
+    const pool = options.pool ?? new Pool({ connectionString: campaignsWorkerDatabaseUrl(options), max: 4 });
     const ownsPool = options.pool === undefined;
     let working = false;
     let stopped = false;
@@ -3207,33 +3743,76 @@ async function runCampaignsWorkerLocked(options, db) {
                 ? populateUnsubscribeContent(String(template.html ?? ""), String(template.text ?? ""), unsubscribe)
                 : { html: String(template.html ?? ""), text: String(template.text ?? "") };
             if (job.kind === "campaign" && job.campaign_id) {
+                const installationTracking = settings.rows[0]?.settings.metadata;
+                const campaignTracking = campaign.metadata;
+                // Explicit campaign choices override historical installation defaults;
+                // missing campaign keys retain the installation's old opt-out behavior.
+                const masterEnabled = campaignTracking?.trackingEnabled === true
+                    || (campaignTracking?.trackingEnabled !== false && settings.rows[0]?.settings.trackingEnabled !== false);
+                const allowed = masterEnabled
+                    && provider.metadata?.trackingEnabled !== false
+                    && subscriber.metadata?.trackingOptOut !== true;
+                // Provider analytics ingress/native tracking is completely independent.
+                const openAllowed = allowed && (campaignTracking?.localOpenPixelEnabled === true
+                    || (campaignTracking?.localOpenPixelEnabled !== false && installationTracking?.localOpenPixelEnabled !== false));
+                const clickAllowed = allowed && (campaignTracking?.localClickRewriteEnabled === true
+                    || (campaignTracking?.localClickRewriteEnabled !== false && installationTracking?.localClickRewriteEnabled !== false));
                 const tracking = snapshot.tracking && typeof snapshot.tracking === "object" ? snapshot.tracking : null;
                 if (tracking?.html && typeof tracking.html === "string") {
-                    rendered = { html: tracking.html, text: typeof tracking.text === "string" ? tracking.text : rendered.text };
+                    const changed = (tracking.openAllowed !== false) !== openAllowed || (tracking.clickAllowed !== false) !== clickAllowed;
+                    if (changed && tracking.originalHtml && typeof tracking.originalHtml === "string") {
+                        rendered = { html: tracking.originalHtml, text: typeof tracking.originalText === "string" ? tracking.originalText : rendered.text };
+                    }
+                    else if (changed && !tracking.originalHtml) {
+                        throw Object.assign(new Error("Cannot safely change tracking on this previously prepared job"), { deliveryState: "not-sent", code: "TRACKING_MODE_CHANGED" });
+                    }
+                    else {
+                        rendered = { html: tracking.html, text: typeof tracking.text === "string" ? tracking.text : rendered.text };
+                    }
+                }
+                else if (!openAllowed && !clickAllowed) {
+                    // No local transforms: preserve both alternatives byte for byte.
+                    snapshot.tracking = { html: rendered.html, text: rendered.text,
+                        originalHtml: rendered.html, originalText: rendered.text, openAllowed: false, clickAllowed: false };
+                    await db.query("UPDATE campaigns.jobs SET snapshot=$2,updated_at=now() WHERE id=$1 AND state='sending'", [job.id, snapshot]);
                 }
                 else {
-                    const hrefs = [...rendered.html.matchAll(/\bhref=(["'])(https?:\/\/[^"'<>]+)\1/gi)]
-                        .map(match => match[2])
-                        .filter(url => !unsubscribe || !url.startsWith(unsubscribe))
-                        .slice(0, 200);
-                    const links = await createCampaignTrackingLinks(db, {
-                        signingKey: key, installationPublicUrl: String(settings.rows[0]?.settings.publicUrl),
-                        domainId: typeof campaign.metadata?.trackingDomainId === "string" ? String(campaign.metadata.trackingDomainId) : null,
-                        jobId: job.id, campaignId: job.campaign_id, recipientId: job.recipient_id,
-                        subject: String(campaign.subject ?? template.subject), html: rendered.html, text: rendered.text,
-                        trackingEnabled: settings.rows[0]?.settings.trackingEnabled !== false,
-                        recipientTrackingOptOut: subscriber.metadata?.trackingOptOut === true,
-                        clicks: hrefs.map((url, index) => ({ key: String(index), url })),
-                    });
-                    let html = rendered.html;
-                    for (let index = 0; index < hrefs.length; index++)
-                        html = html.replace(hrefs[index], links.clicks[index].url);
-                    html += `<p><a href="${escapeHtmlAttribute(links.webVersionUrl)}">View in browser</a></p>`;
-                    if (links.openUrl)
-                        html += `<img src="${escapeHtmlAttribute(links.openUrl)}" width="1" height="1" alt="">`;
-                    rendered = { html, text: `${rendered.text}\n\nView in browser: ${links.webVersionUrl}` };
-                    snapshot.tracking = { documentId: links.documentId, html: rendered.html, text: rendered.text };
-                    await db.query("UPDATE campaigns.jobs SET snapshot=$2,updated_at=now() WHERE id=$1 AND state='sending'", [job.id, snapshot]);
+                    // Keep the document, tokens and retry snapshot atomic. A failed
+                    // preparation must never strand the job behind its unique document ID.
+                    const trackingClient = await db.connect();
+                    try {
+                        await trackingClient.query("BEGIN");
+                        const hrefs = clickAllowed ? campaignClickDestinations(rendered.html, unsubscribe ? [unsubscribe] : []) : [];
+                        const original = rendered;
+                        const links = await createCampaignTrackingLinks(trackingClient, {
+                            signingKey: key, installationPublicUrl: String(settings.rows[0]?.settings.publicUrl),
+                            domainId: typeof campaign.metadata?.trackingDomainId === "string" ? String(campaign.metadata.trackingDomainId) : null,
+                            jobId: job.id, campaignId: job.campaign_id, recipientId: job.recipient_id,
+                            subject: String(campaign.subject ?? template.subject), html: rendered.html, text: rendered.text,
+                            trackingEnabled: allowed, recipientTrackingOptOut: !allowed,
+                            openTrackingEnabled: openAllowed,
+                            clickTrackingEnabled: clickAllowed,
+                            clicks: hrefs.map((url, index) => ({ key: String(index), url })),
+                        });
+                        let html = clickAllowed
+                            ? rewriteCampaignClickAnchors(rendered.html, hrefs, links.clicks.map(link => link.url))
+                            : rendered.html;
+                        html += `<p><a href="${escapeHtmlAttribute(links.webVersionUrl)}">View in browser</a></p>`;
+                        if (links.openUrl)
+                            html += `<img src="${escapeHtmlAttribute(links.openUrl)}" width="1" height="1" alt="">`;
+                        rendered = { html, text: `${rendered.text}\n\nView in browser: ${links.webVersionUrl}` };
+                        snapshot.tracking = { documentId: links.documentId, html: rendered.html, text: rendered.text,
+                            originalHtml: original.html, originalText: original.text, openAllowed, clickAllowed };
+                        await trackingClient.query("UPDATE campaigns.jobs SET snapshot=$2,updated_at=now() WHERE id=$1 AND state='sending'", [job.id, snapshot]);
+                        await trackingClient.query("COMMIT");
+                    }
+                    catch (error) {
+                        await trackingClient.query("ROLLBACK");
+                        throw error;
+                    }
+                    finally {
+                        trackingClient.release();
+                    }
                 }
             }
             const result = await sender(deliveryConfig(provider, decrypted(key, found.rows[0].secret)), {

@@ -27,6 +27,8 @@ export interface ProviderAnalyticsSyncResult {
     events: ProviderAnalyticsEvent[];
     nextCursor: string | null;
     hasMore: boolean;
+    /** Known IDs for which the provider has no history; a partial read is not a complete success. */
+    missingMessageCount?: number;
 }
 export type ProviderAnalyticsErrorKind = "authentication" | "permission" | "rate_limited" | "unavailable" | "provider";
 export declare class ProviderAnalyticsError extends Error {

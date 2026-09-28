@@ -1,0 +1,6 @@
+# CAMPAIGNS_DOMAIN must be the public DNS hostname, without a scheme or path.
+# Caddy terminates TLS and forwards both the application and its public links.
+{$CAMPAIGNS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy campaigns:8080
+}

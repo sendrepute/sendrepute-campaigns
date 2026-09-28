@@ -28,6 +28,24 @@ export function publicAddress(ip) {
         return false;
     return true;
 }
+/** Explicitly approved private SMTP hosts still must not reach link-local metadata endpoints. */
+export function permittedSmtpAddress(ip, allowPrivateHost) {
+    if (publicAddress(ip))
+        return true;
+    if (!allowPrivateHost)
+        return false;
+    const family = isIP(ip);
+    if (family === 4) {
+        const [a = 0, b = 0] = ip.split(".").map(Number);
+        return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) ||
+            (a === 192 && b === 168);
+    }
+    if (family === 6) {
+        const normalized = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+        return normalized === "::1" || /^f[cd][0-9a-f]{2}:/i.test(normalized);
+    }
+    return false;
+}
 function required(value, field, max = 4096) {
     if (!value || value.length > max || /[\r\n]/.test(value)) {
         throw new DeliveryError(`Invalid ${field}`, "INVALID_CONFIG", "not-sent");

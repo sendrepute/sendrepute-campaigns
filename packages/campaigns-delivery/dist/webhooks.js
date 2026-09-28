@@ -1,8 +1,9 @@
-import { createVerify, timingSafeEqual, X509Certificate } from "node:crypto";
+import { createHmac, createPublicKey, createVerify, timingSafeEqual, verify, X509Certificate } from "node:crypto";
 import { resolve4, resolve6 } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { DeliveryError } from "./types.js";
+import { parseMailjetJson } from "./mailjet-json.js";
 import { publicAddress } from "./validate.js";
 const MAX_WEBHOOK_BYTES = 1_048_576;
 const MAX_CERT_BYTES = 65_536;
@@ -20,11 +21,91 @@ export function parseTokenWebhook(provider, rawBody, actualToken, expectedToken)
     if (Buffer.byteLength(text) > MAX_WEBHOOK_BYTES)
         throw new DeliveryError("Webhook body is too large", "WEBHOOK_TOO_LARGE", "not-sent");
     try {
-        return JSON.parse(text);
+        return provider === "mailjet" ? parseMailjetJson(text) : JSON.parse(text);
     }
     catch {
         throw new DeliveryError("Invalid webhook JSON", "WEBHOOK_INVALID", "not-sent");
     }
+}
+/** Verify provider signatures over the original HTTP bytes before parsing or writing events. */
+export function verifyProviderEventWebhook(provider, raw, headers, credential, now = Date.now()) {
+    const fail = () => { throw new DeliveryError("Invalid webhook signature", "WEBHOOK_UNAUTHENTICATED", "not-sent"); };
+    if (!credential || raw.length > MAX_WEBHOOK_BYTES)
+        fail();
+    let payload;
+    try {
+        payload = JSON.parse(raw.toString("utf8"));
+    }
+    catch {
+        fail();
+    }
+    if (provider === "mailgun") {
+        const signature = payload?.signature;
+        const timestamp = String(signature?.timestamp ?? "");
+        const token = String(signature?.token ?? "");
+        const digest = String(signature?.signature ?? "");
+        if (!/^\d{10}$/.test(timestamp) ||
+            Math.abs(now - Number(timestamp) * 1000) > 300_000 ||
+            !/^[a-zA-Z0-9]{1,256}$/.test(token) ||
+            !/^[0-9a-f]{64}$/i.test(digest))
+            fail();
+        const expected = createHmac("sha256", credential).update(timestamp + token).digest();
+        if (!timingSafeEqual(expected, Buffer.from(digest, "hex")))
+            fail();
+        const event = payload["event-data"];
+        if (!event || typeof event !== "object" || Array.isArray(event))
+            fail();
+        return event;
+    }
+    if (provider === "resend") {
+        const id = headers["svix-id"] ?? "", timestamp = headers["svix-timestamp"] ?? "", signature = headers["svix-signature"] ?? "";
+        if (!id || !timestamp || !/^\d{10}$/.test(timestamp) || Math.abs(now - Number(timestamp) * 1000) > 300_000 || !signature)
+            fail();
+        const match = signature.split(" ").find(item => /^v1,[A-Za-z0-9+/=]+$/.test(item));
+        if (!credential.startsWith("whsec_"))
+            fail();
+        if (!match)
+            fail();
+        let key;
+        try {
+            key = Buffer.from(credential.slice(6), "base64");
+        }
+        catch {
+            return fail();
+        }
+        if (key.length < 16)
+            fail();
+        const expected = createHmac("sha256", key).update(`${id}.${timestamp}.${raw.toString("utf8")}`).digest();
+        const actual = Buffer.from(match.slice(3), "base64");
+        if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
+            fail();
+        if (!payload || typeof payload !== "object" || Array.isArray(payload))
+            fail();
+        return payload;
+    }
+    const timestamp = headers["x-twilio-email-event-webhook-timestamp"] ?? "";
+    const signature = headers["x-twilio-email-event-webhook-signature"] ?? "";
+    if (!timestamp || !/^\d{10}$/.test(timestamp) || Math.abs(now - Number(timestamp) * 1000) > 300_000 || !signature)
+        fail();
+    let key;
+    try {
+        const bytes = Buffer.from(credential, "base64");
+        key = createPublicKey(credential.includes("BEGIN PUBLIC KEY") ? credential :
+            bytes.length === 65 && bytes[0] === 4
+                ? { key: { kty: "EC", crv: "P-256", x: bytes.subarray(1, 33).toString("base64url"), y: bytes.subarray(33).toString("base64url") }, format: "jwk" }
+                : { key: bytes, format: "der", type: "spki" });
+        if (key.asymmetricKeyType !== "ec")
+            fail();
+        const valid = verify("sha256", Buffer.concat([Buffer.from(timestamp), raw]), key, Buffer.from(signature, "base64"));
+        if (!valid)
+            fail();
+    }
+    catch {
+        fail();
+    }
+    if (!Array.isArray(payload))
+        fail();
+    return payload;
 }
 function snsCertificateUrl(value, topicArn) {
     if (typeof value !== "string" || value.length > 2048)
@@ -184,6 +265,11 @@ export async function parseSesSnsWebhook(rawBody, options) {
     if (!value || typeof value !== "object" || Array.isArray(value))
         throw new DeliveryError("Invalid SNS message", "WEBHOOK_INVALID", "not-sent");
     const message = value;
+    // Signed SNS Timestamp bounds replay even when a notification has not yet
+    // been assigned a local deduplication key.
+    const sentAt = typeof message.Timestamp === "string" ? Date.parse(message.Timestamp) : NaN;
+    if (!Number.isFinite(sentAt) || Math.abs((options.now?.() ?? Date.now()) - sentAt) > 24 * 60 * 60 * 1000)
+        throw new DeliveryError("SNS notification timestamp is outside the allowed window", "WEBHOOK_UNAUTHENTICATED", "not-sent");
     const topic = message.TopicArn;
     if (!options.expectedTopicArns.length || typeof topic !== "string" || !options.expectedTopicArns.includes(topic)) {
         throw new DeliveryError("SNS topic is not allowed", "WEBHOOK_TOPIC_REJECTED", "not-sent");
