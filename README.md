@@ -14,10 +14,13 @@ Download the [v0.1.25 ZIP](https://github.com/sendrepute/sendrepute-campaigns/ra
 
 Requirements: Linux x64/ARM64 with Docker Engine and Compose v2, or Node.js 22+ and PostgreSQL for a non-Docker installation. Windows users can use Docker Desktop/WSL2; native Windows archive installation is unverified. Use persistent database and application volumes, a public HTTPS URL for production, and outbound access to your chosen SMTP relay or provider. See the [full installation instructions](docs/install.md).
 
-On a fresh Ubuntu 22.04/24.04/26.04 server without Docker, first follow the
-[official-repository Docker Engine and Compose installation commands](docs/install.md#install-docker-engine-on-a-fresh-ubuntu-server).
-If Docker is already installed, especially via Snap, back up and plan a
-separate migration rather than replacing it in place or disabling AppArmor.
+On a fresh Ubuntu 24.04/26.04 server without Docker, install Ubuntu's
+`docker.io` and `docker-compose-v2` packages using the
+[basic Docker Engine and Compose installation commands](docs/install.md#install-docker-engine-on-a-fresh-ubuntu-server).
+Compose runs this project's `compose.yaml`; it is not a separate Campaigns
+application. If Docker and Compose already work, skip installation. Do not
+replace an existing Docker installation or Snap package without backing up
+and planning a separate migration, and do not disable AppArmor.
 
 From the extracted **release archive**:
 
