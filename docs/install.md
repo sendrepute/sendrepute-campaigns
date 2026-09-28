@@ -17,6 +17,47 @@ No honest capacity number is available yet. CPU, memory, database I/O, message
 size, provider limits, tracking traffic, and list shape all affect capacity.
 Load-test your workload and monitor it before increasing send volume.
 
+## Install Docker Engine on a fresh Ubuntu server
+
+For a **new Ubuntu 22.04, 24.04, or 26.04 server without an existing Docker
+installation**, install Docker Engine and the Compose plugin from Docker's
+official apt repository. These commands do not uninstall Docker or remove
+volumes. If the server already has Docker (including the Snap package), first
+back up its configuration and volumes and plan a separate migration; do not
+run these commands as an in-place replacement. In particular, do not disable
+AppArmor or Docker security controls to work around Snap Docker permission
+errors. See [Docker's Ubuntu installation guide](https://docs.docker.com/engine/install/ubuntu/)
+for supported releases and updates.
+
+```sh
+sudo apt update
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo docker run --rm hello-world
+sudo docker compose version
+```
+
+The `hello-world` container and Compose version confirm the installation;
+keep using `sudo docker compose` if your account cannot access the Docker
+socket. Do not add untrusted users to the `docker` group: membership grants
+root-equivalent host access. The Campaigns quickstart below assumes Docker and
+the Compose plugin are already working.
+
 ## Docker Compose quickstart
 
 Download the [v0.1.25 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.25/downloads/sendrepute-campaigns-0.1.25.zip)
