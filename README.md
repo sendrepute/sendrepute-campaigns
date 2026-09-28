@@ -14,12 +14,21 @@ Download the [v0.1.26 ZIP](https://github.com/sendrepute/sendrepute-campaigns/ra
 
 Requirements: Linux x64/ARM64 (Docker Engine and Compose v2; the guided setup can offer to install them on fresh Ubuntu 24.04/26.04), or Node.js 22+ and PostgreSQL for a [manual non-Docker installation](docs/install.md#alternative-nodejs-path). Windows users can use Docker Desktop/WSL2; native Windows archive installation is unverified. Use persistent database and application volumes, a public HTTPS URL for production, and outbound access to your chosen SMTP relay or provider. See the [full installation instructions](docs/install.md).
 
-From the extracted **release archive or repository directory**, run the guided
-setup (do not pipe a remote script into a shell):
+On a **fresh Ubuntu 24.04/26.04 server with no existing Campaigns installation**,
+start with these commands (do not pipe a remote script into a shell):
 
 ```sh
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/sendrepute/sendrepute-campaigns.git
+cd sendrepute-campaigns
 ./setup.sh
 ```
+
+Alternatively, verify and extract the versioned release archive linked above,
+then run `./setup.sh` from the extracted directory. Do **not** clone over an
+existing Campaigns directory or use these fresh-install commands as an upgrade;
+follow [Upgrade and backup](#upgrade-and-backup) to preserve existing data.
 
 It reuses working non-Snap Docker Engine/Compose v2. On a fresh Ubuntu 24.04/26.04
 host missing Docker, it asks before installing Ubuntu's `docker.io` and
