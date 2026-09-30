@@ -1,0 +1,13 @@
+[Unit]
+Description=Opt-in verified encrypted SendRepute Campaigns backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# Replace these TWO placeholders before installing. Use the same dedicated
+# operator that owns the config and has permission to access Docker.
+User=REPLACE_OPERATOR
+WorkingDirectory=REPLACE_ABSOLUTE_INSTALL_DIRECTORY
+ExecStart=REPLACE_ABSOLUTE_INSTALL_DIRECTORY/backup.sh backup
+TimeoutStartSec=6h

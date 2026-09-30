@@ -16,10 +16,11 @@ cookies, rate limits, audit events and encrypted provider secrets. Restrict
 proxy trust to known proxy hops. Review retention and privacy obligations for
 subscriber, tracking, audit, suppression and backup data.
 
-The public demo is read-only. `?demo=true` and demo bootstrap responses must
-never grant a session or mutate production records. Do not use demo behavior
-as an authorization check; every mutation requires an authenticated session,
-CSRF validation and role permission.
+The website's interactive demo runs only in its separate browser-local build;
+it cannot send email or access the installed server. The installed frontend and
+API have no demo mode or demo bootstrap. `?demo=true` and browser storage cannot
+grant a session or switch an installation to simulated data. Every mutation
+requires an authenticated session, CSRF validation and role permission.
 
 ## Roles
 
@@ -71,15 +72,20 @@ guarantee delivery.
 
 ## Current integration limitations
 
-The standalone server does not currently configure an Amazon SNS signature
-verifier, so Amazon SES webhook ingestion is unsupported and fails closed with
-HTTP 503. Do not expose or treat that endpoint as a working bounce/complaint
-processor. Until a supported verifier is released, use provider-side
-suppression and process SES events through a separately verified integration.
+Amazon SES event ingestion requires a provider SNS topic ARN allowlist and a
+manually confirmed SNS HTTPS subscription to the public provider webhook.
+The server verifies the SNS signature and topic allowlist; requests without an
+allowlist fail closed with HTTP 503. Configure an SES configuration-set event
+destination in AWS for delivery, bounce and complaint notifications. A stored
+ARN, successful connection check, or operator-marked webhook setting is not
+proof of receipt: inspect the last authenticated, attributed provider event.
+Continue using provider-side suppression; no endpoint guarantees inbox delivery
+or automatically provisions an AWS subscription.
 
-A full hosted SendRepute editor/embed handoff is also not available. The
-published API does not yet provide the required short-lived, single-use,
-origin-bound handoff capability. Campaigns must not put a SendRepute API key
-in a browser URL, storage, iframe message, or frontend bundle. Use the local
-template editing features that are present; do not advertise a hosted editor
-as enabled.
+A hosted SendRepute editor handoff is available when the central service
+supports it: the Campaigns server requests a short-lived, single-use code
+bound to the authenticated key, nonce and exact return origin. Each launch
+binds its own origin; the API key has no persistent origin pin. The browser
+receives the one-use code, never the SendRepute API key. If the central
+service lacks the handoff route, use the local editor instead; never move the
+API key into browser URLs, storage, iframe messages or frontend bundles.

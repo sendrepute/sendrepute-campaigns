@@ -17,9 +17,13 @@ export async function boundedFetch(url, init, options, operation, parseJson = JS
         response = await fetchImpl(url, { ...init, redirect: "manual", signal: controller.signal });
     }
     catch (error) {
-        const detail = error instanceof Error && error.name === "AbortError" ? "timed out" : "failed";
+        const cause = error && typeof error === "object" && "cause" in error ? error.cause : error;
+        const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+        const timedOut = controller.signal.aborted || (error instanceof Error && error.name === "AbortError") || code === "ETIMEDOUT";
+        const category = timedOut ? "HTTP_TIMEOUT" : code === "ENOTFOUND" || code === "EAI_AGAIN" ? "HTTP_DNS"
+            : ["CERT_HAS_EXPIRED", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "DEPTH_ZERO_SELF_SIGNED_CERT", "ERR_TLS_CERT_ALTNAME_INVALID"].includes(String(code)) ? "HTTP_TLS" : "HTTP_TRANSPORT";
         clearTimeout(timeout);
-        throw new DeliveryError(`Provider request ${detail}`, detail === "timed out" ? "HTTP_TIMEOUT" : "HTTP_TRANSPORT", operation === "send" ? "unknown" : "not-sent");
+        throw new DeliveryError(category === "HTTP_TIMEOUT" ? "Provider request timed out" : "Provider request failed", category, operation === "send" ? "unknown" : "not-sent");
     }
     if (response.status >= 300 && response.status < 400) {
         clearTimeout(timeout);

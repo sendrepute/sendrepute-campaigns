@@ -85,8 +85,11 @@ export async function verifySmtp(config, options) {
             throw new DeliveryError("SMTP authentication failed", "SMTP_AUTH_FAILED", "not-sent", responseCode);
         if (code === "ETIMEDOUT" || code === "ESOCKETTIMEDOUT")
             throw new DeliveryError("SMTP verification timed out", "SMTP_TIMEOUT", "not-sent", undefined, true);
-        if (code === "ETLS")
+        const tlsCodes = ["CERT_HAS_EXPIRED", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "ERR_TLS_CERT_ALTNAME_INVALID", "ETLS"];
+        if (tlsCodes.includes(code) || tlsCodes.includes(String(error.cause?.code)))
             throw new DeliveryError("SMTP TLS verification failed", "SMTP_TLS_FAILED", "not-sent");
+        if (["ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH"].includes(code))
+            throw new DeliveryError("SMTP connection failed", "SMTP_NETWORK", "not-sent");
         throw new DeliveryError("SMTP verification failed", "SMTP_VERIFY_FAILED", "not-sent", Number.isFinite(responseCode) ? responseCode : undefined);
     }
     finally {

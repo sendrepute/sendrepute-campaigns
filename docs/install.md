@@ -14,6 +14,17 @@
 - Outbound access to the mail provider you configure. SendRepute features also
   require outbound HTTPS and a separately issued SendRepute API key.
 
+Create the key in SendRepute's API access page with **Use with Campaigns
+(select required permissions)** for all Campaigns features. This selects
+`account:read`, `catalog:read`, `usage:read`, `builder:read`,
+`builder:write`, `vip:read`, `vip:builder`, `ai:generate`, `models:read`,
+`classify`, `rewrite`, and `vip:purchase`. Activation only checks the first
+three; models, classification, rewrite quote/apply, insights, hosted editors,
+paid designs and VIP purchase need the other permissions when used. This preset
+does not include invoice/deposit `billing:read` or `billing:write`; those are
+not Campaigns operations. Paid actions still require explicit consent, wallet
+funds and appropriate Campaigns role permissions.
+
 No honest capacity number is available yet. CPU, memory, database I/O, message
 size, provider limits, tracking traffic, and list shape all affect capacity.
 Load-test your workload and monitor it before increasing send volume.

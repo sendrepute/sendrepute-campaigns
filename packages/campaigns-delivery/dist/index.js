@@ -4,6 +4,7 @@ import { sendSmtp, verifySmtp } from "./smtp.js";
 import { sendNativeApi, verifyNativeApi } from "./native-providers.js";
 import { validateConfig, validateMessage } from "./validate.js";
 export * from "./types.js";
+export * from "./verification-reason.js";
 export * from "./webhooks.js";
 export * from "./provider-analytics.js";
 export * from "./mailjet-reconciliation.js";
@@ -33,15 +34,9 @@ export async function verifyProvider(config, options = {}) {
         case "smtp":
             await verifySmtp(config, options);
             break;
-        case "ses":
-            await verifySes(config, options);
-            break;
-        case "mailjet":
-            await verifyMailjet(config, options);
-            break;
-        case "smtpcom":
-            await verifySmtpCom(config, options);
-            break;
+        case "ses": return { ok: true, provider: config.type, verification: await verifySes(config, options) };
+        case "mailjet": return { ok: true, provider: config.type, verification: await verifyMailjet(config, options) };
+        case "smtpcom": return { ok: true, provider: config.type, verification: await verifySmtpCom(config, options) };
         case "sendgrid":
         case "mailgun":
             return { ok: true, provider: config.type, verification: await verifyNativeApi(config, options) };
@@ -57,6 +52,6 @@ export async function verifyProvider(config, options = {}) {
             return { ok: true, provider: config.type, verification };
         }
     }
-    return { ok: true, provider: config.type };
+    return { ok: true, provider: config.type, verification: "verified" };
 }
 //# sourceMappingURL=index.js.map

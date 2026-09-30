@@ -6,6 +6,7 @@ type Deps = {
     need: (permission: string) => any;
     mutation: any;
     wrap: (fn: any) => any;
+    ownedTemplate: (request: Request, id: string, db: DeliveryDb) => Promise<Json>;
     http: (status: number, message: string) => Error;
     scope: (db: DeliveryDb) => Promise<string>;
     lists: (request: Request) => string[] | null;

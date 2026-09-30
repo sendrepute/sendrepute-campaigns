@@ -1,5 +1,6 @@
 import { Router, type Request, type RequestHandler } from "express";
 import type { PoolClient, QueryResult, QueryResultRow } from "pg";
+type Json = Record<string, any>;
 type Db = {
     query<T extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<T>>;
 };
@@ -22,6 +23,7 @@ export declare function createAutomationsRouter(options: {
     mutation: RequestHandler;
     need: (permission?: string) => RequestHandler;
     wrap: (handler: (req: Request, res: any) => Promise<void>) => RequestHandler;
+    ownedTemplate: (req: Request, id: string, db: Db) => Promise<Json>;
     assertListsAllowed: (req: Request, ids: unknown) => void;
     restrictedLists: (req: Request) => string[] | null;
 }): Router;

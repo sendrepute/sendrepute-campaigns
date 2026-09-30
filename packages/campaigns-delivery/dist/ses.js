@@ -53,7 +53,10 @@ export async function sendSes(config, message, options) {
 export async function verifySes(config, options) {
     const path = "/v2/email/account";
     const response = await boundedFetch(`https://email.${config.region}.amazonaws.com${path}`, { method: "GET", headers: sign(config, "GET", path, "") }, options, "verify");
+    if (response.status === 403)
+        return "inconclusive";
     if (!response.ok)
         throw new DeliveryError(safeProviderError(response.status, response.json), "SES_VERIFY_FAILED", "not-sent", response.status);
+    return "verified";
 }
 //# sourceMappingURL=ses.js.map

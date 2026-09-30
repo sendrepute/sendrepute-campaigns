@@ -133,6 +133,51 @@ const analyticsListScope = `($5::text[] IS NULL OR EXISTS (
       )
     ELSE false END
 ))`;
+const analyticsReportSql = `SELECT e.provider_id "providerId",e.campaign_id "campaignId",
+       NULLIF(btrim(p.body->>'name'),'') "providerName",
+       max(e.occurred_at) "lastActivityAt",
+       count(DISTINCT job_id) FILTER(WHERE event_type='delivered')::int delivered,
+       count(DISTINCT job_id) FILTER(WHERE event_type='opened')::int opened,
+       count(DISTINCT job_id) FILTER(WHERE event_type='clicked')::int clicked,
+       count(DISTINCT job_id) FILTER(WHERE event_type='hard_bounce')::int "hardBounced",
+       count(DISTINCT job_id) FILTER(WHERE event_type='soft_bounce')::int "softBounced",
+       count(DISTINCT job_id) FILTER(WHERE event_type='complained')::int complained,
+       count(*) OVER()::int "_total",p.body->>'type' "providerType",
+       s.track_opens "trackOpens",s.track_clicks "trackClicks"
+       FROM campaigns.provider_analytics_events e
+       LEFT JOIN campaigns.entities p ON p.kind='providers' AND p.id=e.provider_id
+       LEFT JOIN campaigns.provider_analytics_state s ON s.provider_id=e.provider_id
+       WHERE ($1::uuid IS NULL OR e.campaign_id=$1) AND ($2::uuid IS NULL OR e.provider_id=$2)
+         AND ${analyticsListScope}
+         AND ($6::timestamptz IS NULL OR e.occurred_at >= $6)
+         AND ($7::timestamptz IS NULL OR e.occurred_at <= $7)
+       GROUP BY e.provider_id,e.campaign_id,p.body,s.track_opens,s.track_clicks
+       ORDER BY max(e.occurred_at) DESC NULLS LAST,e.provider_id,e.campaign_id ASC NULLS LAST LIMIT $3 OFFSET $4`;
+function reportRow({ _total, providerType, trackOpens, trackClicks, ...row }) {
+    const capability = providerType ? providerAnalyticsCapability(providerType) : null;
+    return Object.fromEntries(Object.entries(row).map(([key, value]) => {
+        const metric = key === "hardBounced" ? "hard_bounce" : key === "softBounced" ? "soft_bounce" : key === "complained" ? "complained" : key;
+        const disabled = (key === "opened" && !trackOpens) || (key === "clicked" && !trackClicks);
+        return [key, disabled || (capability && key in capability.metrics && !capability.metrics[metric]) ? null : value];
+    }));
+}
+function csvCell(value) {
+    const text = value == null ? "" : String(value);
+    // Spreadsheet formula injection applies even to quoted CSV fields.
+    const safe = /^[\s\u0000-\u001f]*[=+\-@]/u.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+}
+function reportDates(request) {
+    return ["from", "to"].map(key => {
+        const raw = request.query[key];
+        if (raw == null || raw === "")
+            return null;
+        const date = new Date(String(raw));
+        if (typeof raw !== "string" || !Number.isFinite(date.getTime()))
+            throw Object.assign(new Error(`Invalid ${key} date`), { status: 400 });
+        return date.toISOString();
+    });
+}
 export function createProviderAnalyticsRouter(deps) {
     const router = Router();
     const read = async (id) => {
@@ -144,11 +189,16 @@ export function createProviderAnalyticsRouter(deps) {
     router.get("/providers/:providerId/analytics/status", deps.need("read"), deps.wrap(async (request, response) => {
         const provider = await read(String(request.params.providerId));
         const capability = providerAnalyticsCapability(String(provider.body.type));
+        const lastVerifiedEvent = (await deps.db.query("SELECT max(recorded_at) \"occurredAt\" FROM campaigns.provider_analytics_events WHERE provider_id=$1 AND source='webhook'", [request.params.providerId])).rows[0]?.occurredAt ?? null;
+        const metadata = provider.body.metadata && typeof provider.body.metadata === "object" ? provider.body.metadata : {};
         const state = (await deps.db.query(`SELECT enabled,cursor,track_opens "trackOpens",track_clicks "trackClicks",
        webhook_configured "webhookConfigured",last_sync_at "lastSyncAt",
        last_success_at "lastSuccessAt",last_error_kind "lastErrorKind",last_error "lastError"
        FROM campaigns.provider_analytics_state WHERE provider_id=$1`, [request.params.providerId])).rows[0];
-        response.json({ data: { providerId: request.params.providerId, capability, enabled: state?.enabled === true, tracking: {
+        response.json({ data: { providerId: request.params.providerId, capability,
+                connectionConfigured: Boolean(provider.secret), lastVerifiedEventAt: lastVerifiedEvent,
+                ...(provider.body.type === "ses" ? { snsTopicArns: Array.isArray(metadata.snsTopicArns) ? metadata.snsTopicArns : [] } : {}),
+                enabled: state?.enabled === true, tracking: {
                     opens: state?.trackOpens === true, clicks: state?.trackClicks === true,
                 }, webhookConfigured: state?.webhookConfigured === true, cursor: state?.cursor ?? null, lastSyncAt: state?.lastSyncAt ?? null,
                 lastSuccessAt: state?.lastSuccessAt ?? null, error: state?.lastErrorKind ? { kind: state.lastErrorKind, message: state.lastError } : null } });
@@ -396,34 +446,51 @@ export function createProviderAnalyticsRouter(deps) {
         const page = deps.page(request);
         const campaignId = request.query.campaignId ? String(request.query.campaignId) : null;
         const providerId = request.query.providerId ? String(request.query.providerId) : null;
-        const result = await deps.db.query(`SELECT e.provider_id "providerId",e.campaign_id "campaignId",
-       NULLIF(btrim(p.body->>'name'),'') "providerName",
-       max(e.occurred_at) "lastActivityAt",
-       count(DISTINCT job_id) FILTER(WHERE event_type='delivered')::int delivered,
-       count(DISTINCT job_id) FILTER(WHERE event_type='opened')::int opened,
-       count(DISTINCT job_id) FILTER(WHERE event_type='clicked')::int clicked,
-       count(DISTINCT job_id) FILTER(WHERE event_type='hard_bounce')::int "hardBounced",
-       count(DISTINCT job_id) FILTER(WHERE event_type='soft_bounce')::int "softBounced",
-       count(DISTINCT job_id) FILTER(WHERE event_type='complained')::int complained,
-       count(*) OVER()::int "_total",p.body->>'type' "providerType",
-       s.track_opens "trackOpens",s.track_clicks "trackClicks"
-       FROM campaigns.provider_analytics_events e
-       LEFT JOIN campaigns.entities p ON p.kind='providers' AND p.id=e.provider_id
-       LEFT JOIN campaigns.provider_analytics_state s ON s.provider_id=e.provider_id
-       WHERE ($1::uuid IS NULL OR e.campaign_id=$1) AND ($2::uuid IS NULL OR e.provider_id=$2)
-         AND ${analyticsListScope}
-       GROUP BY e.provider_id,e.campaign_id,p.body,s.track_opens,s.track_clicks
-       ORDER BY max(e.occurred_at) DESC NULLS LAST,e.provider_id,e.campaign_id ASC NULLS LAST LIMIT $3 OFFSET $4`, [campaignId, providerId, page.pageSize, page.offset, deps.restrictedLists(request)]);
+        const result = await deps.db.query(analyticsReportSql, [campaignId, providerId, page.pageSize, page.offset, deps.restrictedLists(request), ...reportDates(request)]);
         const total = Number(result.rows[0]?._total ?? 0);
-        const data = result.rows.map(({ _total, providerType, trackOpens, trackClicks, ...row }) => {
-            const capability = providerType ? providerAnalyticsCapability(providerType) : null;
-            return Object.fromEntries(Object.entries(row).map(([key, value]) => {
-                const metric = key === "hardBounced" ? "hard_bounce" : key === "softBounced" ? "soft_bounce" : key === "complained" ? "complained" : key;
-                const disabled = (key === "opened" && !trackOpens) || (key === "clicked" && !trackClicks);
-                return [key, disabled || (capability && key in capability.metrics && !capability.metrics[metric]) ? null : value];
-            }));
-        });
+        const data = result.rows.map(reportRow);
         response.json({ data, meta: { page: page.page, pageSize: page.pageSize, total } });
+    }));
+    router.get("/reports/provider-analytics/export", deps.need("read"), deps.wrap(async (request, response) => {
+        const campaignId = request.query.campaignId ? String(request.query.campaignId) : null;
+        const providerId = request.query.providerId ? String(request.query.providerId) : null;
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if ((campaignId && !uuid.test(campaignId)) || (providerId && !uuid.test(providerId)))
+            throw deps.http(400, "Invalid report filter");
+        const scope = deps.restrictedLists(request);
+        const dates = reportDates(request);
+        const params = [campaignId, providerId, 500, 0, scope, ...dates];
+        // The first bounded page provides the count before any response bytes are sent.
+        let result = await deps.db.query(analyticsReportSql, params);
+        const total = Number(result.rows[0]?._total ?? 0);
+        if (total > 100_000)
+            throw deps.http(413, "Export exceeds 100000 report groups; narrow the filters");
+        response.setHeader("Content-Type", "text/csv; charset=utf-8");
+        response.setHeader("Content-Disposition", 'attachment; filename="provider-analytics.csv"');
+        response.setHeader("Cache-Control", "private, no-store");
+        const columns = ["providerId", "campaignId", "providerName", "lastActivityAt", "delivered", "opened", "clicked", "hardBounced", "softBounced", "complained"];
+        response.write(columns.map(csvCell).join(",") + "\r\n");
+        for (let offset = 0; offset < total && !response.destroyed; offset += 500) {
+            if (offset)
+                result = await deps.db.query(analyticsReportSql, [campaignId, providerId, 500, offset, scope, ...dates]);
+            for (const raw of result.rows) {
+                if (response.destroyed)
+                    break;
+                const row = reportRow(raw);
+                const line = columns.map(key => csvCell(row[key] instanceof Date ? row[key].toISOString() : row[key])).join(",") + "\r\n";
+                if (!response.write(line))
+                    await new Promise(resolve => {
+                        const settled = () => {
+                            response.off("drain", settled);
+                            response.off("close", settled);
+                            resolve();
+                        };
+                        response.once("drain", settled);
+                        response.once("close", settled);
+                    });
+            }
+        }
+        response.end();
     }));
     return router;
 }

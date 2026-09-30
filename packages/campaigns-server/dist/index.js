@@ -10,7 +10,7 @@ import { createExperimentsRouter } from "./experiments.js";
 import { inspectPrivateSmtp } from "./private-smtp-readiness.js";
 import { configureSite, siteStatus } from "./https-site.js";
 import { PaidDesigns, paidDesignOperations, paidDesignScope } from "./paid-designs.js";
-import { parseSesSnsWebhook, parseTokenWebhook, verifyProviderEventWebhook, sendMessage, verifyProvider, } from "@workspace/campaigns-delivery";
+import { parseSesSnsWebhook, parseTokenWebhook, verifyProviderEventWebhook, sendMessage, verifyProvider, verificationFailure, } from "@workspace/campaigns-delivery";
 import { appendDeliveryEvent, createDeliveryReliabilityRouter, refreshCampaignDeliveryStatistics, } from "./delivery-reliability.js";
 import { createTelegramNotificationsRouter, enqueueCampaignNotification, runTelegramNotificationWorker, sendTelegramMessage, } from "./telegram-notifications.js";
 import { createAudienceRouter, createAudienceSnapshot, createPostgresAudienceRepository, compileAudiencePredicate, renderMergeVariables, subscriberMergeVariables, validateCustomFieldDefinitions, validateCustomValues, } from "./audience.js";
@@ -24,6 +24,7 @@ import { publicSubscriptionFailure } from "./public-subscription-errors.js";
 export * from "./delivery-contract.generated.js";
 export { enqueueCampaignNotification, runTelegramNotificationWorker, sendTelegramMessage, } from "./telegram-notifications.js";
 import { createAutomationsRouter, advanceAutomations } from "./automations.js";
+import { checkRelease, installedReleaseVersion, ManualCheckCooldownError } from "./release-update.js";
 const scrypt = promisify(nodeScrypt);
 const VERSION = "0.1.0";
 const COOKIE = "campaigns_session";
@@ -70,25 +71,6 @@ const permissions = {
     manager: ["read", "lists:manage", "subscribers:manage", "subscribers:export", "campaigns:manage", "campaigns:send", "audiences:read", "audiences:manage", "delivery:reconcile", "delivery:retry", "providers:manage", "templates:manage", "brands:manage", "api:use"],
     editor: ["read", "lists:manage", "subscribers:manage", "campaigns:manage", "templates:manage", "audiences:read"],
     analyst: ["read", "audiences:read"],
-};
-const demoNow = "2025-01-15T12:00:00.000Z";
-const demoIds = {
-    list: "00000000-0000-4000-8000-000000000101",
-    sub: "00000000-0000-4000-8000-000000000102",
-    campaign: "00000000-0000-4000-8000-000000000103",
-    provider: "00000000-0000-4000-8000-000000000104",
-    template: "00000000-0000-4000-8000-000000000105",
-};
-const demo = {
-    lists: [{ id: demoIds.list, name: "Product updates", description: "Confirmed product subscribers", subscriberCount: 1, metadata: {}, createdAt: demoNow, updatedAt: demoNow }],
-    subscribers: [{ id: demoIds.sub, email: "a***@example.com", firstName: "Demo", lastName: "Subscriber", status: "subscribed", listIds: [demoIds.list], tags: [], confirmedAt: demoNow, unsubscribedAt: null, metadata: {}, createdAt: demoNow, updatedAt: demoNow }],
-    providers: [{ id: demoIds.provider, name: "Demo SMTP", type: "smtp", enabled: true, configured: true, host: "smtp.example.invalid", port: 587, username: null, metadata: {}, createdAt: demoNow, updatedAt: demoNow }],
-    templates: [{ id: demoIds.template, name: "Product announcement", subject: "A useful update", html: "<p>Product news</p>", text: "Product news", metadata: {}, createdAt: demoNow, updatedAt: demoNow }],
-    campaigns: [{ id: demoIds.campaign, name: "January update", subject: "A useful update", previewText: "What is new", fromName: "SendRepute", fromEmail: "news@example.com", replyTo: null, listIds: [demoIds.list], templateId: demoIds.template, providerId: demoIds.provider, status: "sent", scheduledAt: demoNow, statistics: { recipients: 1, sent: 1, delivered: 1, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0 }, metadata: {}, createdAt: demoNow, updatedAt: demoNow }],
-};
-const demoDashboard = {
-    totals: { lists: 1, subscribers: 1, campaigns: 1, sent: 1, delivered: 1, opened: 0, clicked: 0 },
-    recentActivity: [{ id: "00000000-0000-4000-8000-000000000106", type: "campaign.sent", message: "January update completed", actorName: "Demo", createdAt: demoNow, metadata: {} }],
 };
 function hash(value) {
     return createHash("sha256").update(value).digest("hex");
@@ -345,6 +327,19 @@ export function publicCampaignsPageUrl(publicUrl, page) {
     if (!base.pathname.endsWith("/"))
         base.pathname += "/";
     return new URL(page, base);
+}
+// The browser confirmation page is served by the SPA. Mailbox providers POST
+// directly to the public API instead; a POST to the SPA path can return HTML
+// (or 404) without ever suppressing the subscriber.
+export function publicCampaignsOneClickUrl(publicUrl, token) {
+    const base = new URL(publicUrl);
+    const path = base.pathname.replace(/\/?$/, "/");
+    const root = path.endsWith("/campaigns/") ? path.slice(0, -"/campaigns/".length) : path.slice(0, -1);
+    const url = new URL(base.origin);
+    url.pathname = `${root}/api/campaigns/public/unsubscribe`;
+    url.searchParams.set("token", token);
+    url.searchParams.set("oneClick", "1");
+    return url;
 }
 function testRecipients(body) {
     fields(body, ["recipients", "recipient"]);
@@ -603,8 +598,6 @@ function need(permission = "read") {
     };
 }
 function mutation(request, _response, next) {
-    if (request.query.demo === "true")
-        return next(http(405, "Demo data is read-only"));
     if (!request.user)
         return next(http(401, "Authentication required"));
     const supplied = request.get("x-campaigns-csrf");
@@ -664,7 +657,7 @@ function safeConnection(value, credentialKey, secret) {
     };
 }
 function statusData(isInstalled, request, activated) {
-    return { installed: isInstalled, activated, demo: !isInstalled, version: VERSION, user: request.user ? { id: request.user.id, name: request.user.name, email: request.user.email, roleIds: request.user.roleIds, permissions: request.user.permissions, ...(Array.isArray(request.user.listIds) ? { listIds: request.user.listIds } : {}) } : null, csrfToken: request.user ? request.csrfToken ?? null : null };
+    return { installed: isInstalled, activated, demo: false, version: VERSION, user: request.user ? { id: request.user.id, name: request.user.name, email: request.user.email, roleIds: request.user.roleIds, permissions: request.user.permissions, ...(Array.isArray(request.user.listIds) ? { listIds: request.user.listIds } : {}) } : null, csrfToken: request.user ? request.csrfToken ?? null : null };
 }
 function publicEntity(kind, body) {
     if (kind === "campaigns")
@@ -985,9 +978,6 @@ async function listRows(ctx, table, request) {
         total: Number(count.rows[0]?.count ?? 0),
     };
 }
-function demoBootstrap(request) {
-    return { status: statusData(false, request, false), dashboard: demoDashboard, ...demo };
-}
 export function createCampaignsRouter(options = {}) {
     const insecureHttpOrigin = validatedInsecureHttpOrigin(options.insecureHttpOrigin ?? process.env.CAMPAIGNS_INSECURE_HTTP_ORIGIN);
     const db = options.pool ?? new Pool({ connectionString: options.databaseUrl ?? campaignsDatabaseUrl(), max: 10 });
@@ -1033,6 +1023,25 @@ export function createCampaignsRouter(options = {}) {
         for (const row of rows.rows)
             assertEntityAllowed(request, "subscribers", row.body);
     };
+    // Template IDs are not authorization. Shared templates remain installation-wide.
+    const ownedTemplate = async (id, request, database = db) => {
+        if (!ENTITY_UUID.test(id))
+            throw http(404, "Template not found");
+        const row = (await database.query(`SELECT e.body,p.scope,p.owner_id,p.template_deleted_at FROM campaigns.entities e
+       LEFT JOIN campaigns.paid_designs p ON p.id=e.id
+       WHERE e.kind='templates' AND e.id=$1`, [id])).rows[0];
+        if (!row)
+            throw http(404, "Template not found");
+        if (row.owner_id !== null) {
+            // Public subscription events have no operator identity; fail closed.
+            if (!request?.user || row.template_deleted_at)
+                throw http(404, "Template not found");
+            const item = await connection(ctx);
+            if (!item || row.scope !== paidDesignScope(item.secret) || row.owner_id !== request.user.id)
+                throw http(404, "Template not found");
+        }
+        return row.body;
+    };
     router.use(createBrandsRouter({
         db, mutation, need, wrap, page, json, fields, http,
         scope: () => installationScope(db),
@@ -1046,12 +1055,12 @@ export function createCampaignsRouter(options = {}) {
         audit: (request, action, entityType, entityId, metadata) => audit(ctx, request, action, entityType, entityId, metadata),
     }));
     const enqueueSubscriptionMail = async (event) => {
-        const [subscriberResult, templateResult, settingsResult] = await Promise.all([
+        const [subscriberResult, template, settingsResult] = await Promise.all([
             db.query("SELECT body FROM campaigns.entities WHERE kind='subscribers' AND id=$1", [event.subscriberId]),
-            db.query("SELECT body FROM campaigns.entities WHERE kind='templates' AND id=$1", [event.templateId]),
+            ownedTemplate(event.templateId),
             db.query("SELECT settings FROM campaigns.installation WHERE singleton=true"),
         ]);
-        const subscriber = subscriberResult.rows[0]?.body, template = templateResult.rows[0]?.body, settings = settingsResult.rows[0]?.settings;
+        const subscriber = subscriberResult.rows[0]?.body, settings = settingsResult.rows[0]?.settings;
         if (!subscriber || !template || !settings)
             throw Object.assign(new Error("Subscription mail references are unavailable"), { code: "SUBSCRIPTION_MAIL_REFERENCE" });
         const brand = await getBrandDefaults(db, await installationScope(db), template.brandId);
@@ -1070,6 +1079,14 @@ export function createCampaignsRouter(options = {}) {
     }));
     router.use(createSubscriptionCustomizationRouter({
         db, mutation, need, wrap,
+        assertTemplateAllowed: async (request, id) => {
+            await ownedTemplate(id, request);
+            // A public event cannot authenticate the configuring operator. Do not
+            // persist paid references without a durable subscription owner.
+            if ((await db.query("SELECT 1 FROM campaigns.paid_designs WHERE id=$1", [id])).rowCount) {
+                throw http(400, "Paid templates cannot be used for public subscription messages");
+            }
+        },
         assertListAllowed: async (request, listId) => {
             assertListsAllowed(request, [listId]);
             await getEntity(ctx, "lists", listId);
@@ -1234,6 +1251,26 @@ export function createCampaignsRouter(options = {}) {
         }
         response.json({ data: statusData(isInstalled, request, active) });
     }));
+    router.get("/settings/update", need("settings:manage"), wrap(async (request, response) => {
+        const rawForce = request.query.force;
+        if (rawForce !== undefined && rawForce !== "true")
+            throw http(400, "Invalid force parameter");
+        response.set("Cache-Control", "no-store, private");
+        try {
+            response.json({ data: await checkRelease(installedReleaseVersion(), fetch, Date.now(), rawForce === "true") });
+        }
+        catch (error) {
+            if (error instanceof ManualCheckCooldownError) {
+                response.set("Retry-After", "60");
+                throw http(429, error.message);
+            }
+            response.json({ data: {
+                    currentVersion: installedReleaseVersion(), latestVersion: null, status: "unavailable",
+                    reason: error instanceof Error ? error.message : "GitHub release check failed",
+                    publishedAt: null, notes: null, releaseUrl: null, downloadUrl: null, checksumUrl: null,
+                } });
+        }
+    }));
     router.post("/setup", wrap(async (request, response) => {
         const body = json(request.body);
         fields(body, ["setupToken", "ownerName", "email", "password", "instanceName", "publicUrl", "sendReputeApiKey"], ["setupToken", "ownerName", "email", "password", "instanceName", "publicUrl", "sendReputeApiKey"]);
@@ -1329,11 +1366,8 @@ export function createCampaignsRouter(options = {}) {
         response.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; Path=/api/campaigns; SameSite=Strict; Max-Age=0`);
         response.status(204).end();
     }));
-    router.get("/demo/bootstrap", (_request, response) => response.json({ data: demoBootstrap(_request) }));
     router.get("/dashboard", wrap(async (request, response) => {
         const p = page(request);
-        if (request.query.demo === "true")
-            return void response.json({ data: { ...demoDashboard, recentActivity: demoDashboard.recentActivity.slice(p.offset, p.offset + p.pageSize), activityMeta: { page: p.page, pageSize: p.pageSize, total: demoDashboard.recentActivity.length } } });
         if (!request.user)
             throw http(401, "Authentication required");
         if (!permitted(request, "read"))
@@ -1662,34 +1696,23 @@ export function createCampaignsRouter(options = {}) {
         response.json({ data: { deleted: subscriberIds.length, cancelledJobs } });
     }));
     router.use("/templates/:templateId", async (request, _response, next) => {
-        if (request.query.demo === "true")
-            return next();
         if (!request.user)
             throw http(401, "Authentication required");
         const id = String(request.params.templateId);
         if (!ENTITY_UUID.test(id))
             throw http(400, "Invalid template ID");
-        const paid = await db.query("SELECT scope,owner_id FROM campaigns.paid_designs WHERE id=$1", [id]);
-        if (paid.rows[0]) {
-            const item = await connection(ctx);
-            if (!item || paid.rows[0].scope !== paidDesignScope(item.secret) || paid.rows[0].owner_id !== request.user.id)
-                throw http(404, "Template not found");
+        const paid = await db.query("SELECT 1 FROM campaigns.paid_designs WHERE id=$1", [id]);
+        if (paid.rowCount) {
             if (request.method === "GET" && permitted(request, "api:use") && permitted(request, "templates:manage"))
                 await (await paidStore(request)).list(id);
         }
+        await ownedTemplate(id, request);
         next();
     });
     for (const kind of KINDS) {
         const singular = kind === "campaigns" ? "campaign" : kind.slice(0, -1);
         const manage = `${kind}:manage`;
         router.get(`/${kind}`, wrap(async (request, response) => {
-            if (request.query.demo === "true") {
-                const search = String(request.query.search ?? "").trim().toLowerCase();
-                if (search.length > 200)
-                    throw http(400, "Search must not exceed 200 characters");
-                const values = demo[kind].filter(value => !search || `${value.name ?? ""} ${value.email ?? ""} ${value.firstName ?? ""} ${value.lastName ?? ""} ${value.subject ?? ""}`.toLowerCase().includes(search)), p = page(request);
-                return void response.json({ data: values.slice(p.offset, p.offset + p.pageSize), meta: { page: p.page, pageSize: p.pageSize, total: values.length } });
-            }
             if (!request.user)
                 throw http(401, "Authentication required");
             if (!permitted(request, "read"))
@@ -1778,8 +1801,7 @@ export function createCampaignsRouter(options = {}) {
                     assertListsAllowed(request, value.excludeListIds);
                 await validateListIds(db, value.excludeListIds);
                 await validateSegmentIds(db, await installationScope(db), [...value.segmentIds, ...value.excludeSegmentIds]);
-                if (!(await db.query("SELECT 1 FROM campaigns.entities WHERE kind='templates' AND id=$1", [value.templateId])).rowCount)
-                    throw http(400, "Unknown template");
+                await ownedTemplate(String(value.templateId), request);
                 if (!(await db.query("SELECT 1 FROM campaigns.entities WHERE kind='providers' AND id=$1", [value.providerId])).rowCount)
                     throw http(400, "Unknown provider");
             }
@@ -1812,13 +1834,6 @@ export function createCampaignsRouter(options = {}) {
         }));
         router.get(`/${kind}/:${singular}Id`, wrap(async (request, response) => {
             const id = String(request.params[`${singular}Id`]);
-            if (request.query.demo === "true") {
-                const value = demo[kind].find(item => item.id === id);
-                if (!value)
-                    throw http(404, "Demo resource not found");
-                response.json({ data: value });
-                return;
-            }
             if (!request.user)
                 throw http(401, "Authentication required");
             if (!permitted(request, "read"))
@@ -1894,8 +1909,7 @@ export function createCampaignsRouter(options = {}) {
                     assertListsAllowed(request, value.excludeListIds);
                 await validateListIds(db, value.excludeListIds);
                 await validateSegmentIds(db, await installationScope(db), [...value.segmentIds, ...value.excludeSegmentIds]);
-                if (!(await db.query("SELECT 1 FROM campaigns.entities WHERE kind='templates' AND id=$1", [value.templateId])).rowCount)
-                    throw http(400, "Unknown template");
+                await ownedTemplate(String(value.templateId), request);
                 if (!(await db.query("SELECT 1 FROM campaigns.entities WHERE kind='providers' AND id=$1", [value.providerId])).rowCount)
                     throw http(400, "Unknown provider");
             }
@@ -1984,18 +1998,34 @@ export function createCampaignsRouter(options = {}) {
         const row = result.rows[0];
         if (!row)
             throw http(404, "Provider not found");
-        if (!row.secret)
-            throw http(409, "Provider credentials are not configured");
-        validateProvider(row.body, undefined, true);
+        if (!row.secret) {
+            const missingCredentials = row.body.type === "mailjet" ? ["Mailjet API Key", "Mailjet Secret Key"]
+                : row.body.type === "ses" ? ["SES access key ID", "SES secret access key"]
+                    : row.body.type === "smtp" ? ["SMTP password"]
+                        : row.body.type === "postmark" ? ["Postmark server token"] : ["API key"];
+            response.status(409).json({ error: "Provider credentials are not configured", code: "PROVIDER_CREDENTIALS_MISSING",
+                data: { errorCategory: "configuration", reason: "Save the required credentials before checking.", missingCredentials } });
+            return;
+        }
+        // Only the verifier's result belongs in the provider diagnostic envelope.
+        // A failed audit write must not turn a successful verification into a
+        // misleading "provider unavailable" response.
+        let verification;
         try {
-            const verification = await ctx.verify(deliveryConfig(row.body, decrypted(ctx.key, row.secret)));
-            await audit(ctx, request, "provider.verify", "providers", id, { ok: true });
-            response.json({ data: { ok: true, id, message: verification.verification === "inconclusive" ? "Provider credentials could not be conclusively verified with this key's read scope" : "Provider verified", ...(verification.verification ? { verification: verification.verification } : {}) } });
+            validateProvider(row.body, undefined, true);
+            verification = await ctx.verify(deliveryConfig(row.body, decrypted(ctx.key, row.secret)));
         }
         catch (error) {
-            await audit(ctx, request, "provider.verify", "providers", id, { ok: false, code: error.code ?? "VERIFICATION_FAILED" });
-            throw http(502, "Provider verification failed");
+            const detail = error?.status === 400
+                ? { errorCategory: "configuration", reason: "Provider configuration is incomplete or invalid." }
+                : verificationFailure(error);
+            await audit(ctx, request, "provider.verify", "providers", id, { ok: false, category: detail.errorCategory, ...(detail.providerHttpStatus ? { providerHttpStatus: detail.providerHttpStatus } : {}) });
+            response.status(502).json({ error: "Provider verification failed", code: "PROVIDER_VERIFICATION_FAILED", data: detail });
+            return;
         }
+        await audit(ctx, request, "provider.verify", "providers", id, { ok: true });
+        response.json({ data: { ok: true, id, message: verification.verification === "inconclusive" ? "The provider denied the non-sending read check; sending permission remains unknown. No message was sent." : "Provider authentication and connectivity checked. Sender authorization and delivery were not tested.", verification: verification.verification ?? "verified",
+                ...(verification.verification === "inconclusive" ? { errorCategory: "permission", providerHttpStatus: 403 } : {}) } });
     }));
     router.post("/providers/:providerId/private-smtp-readiness", mutation, need("providers:manage"), wrap(async (request, response) => {
         const id = String(request.params.providerId);
@@ -2041,13 +2071,21 @@ export function createCampaignsRouter(options = {}) {
     }));
     router.post("/hosted-builder/launch", mutation, need("templates:manage"), wrap(async (request, response) => {
         const body = json(request.body);
-        fields(body, ["state", "initialMjml", "mode", "vipAccessId", "initialDocument"], ["state"]);
+        fields(body, ["state", "returnOrigin", "initialMjml", "mode", "vipAccessId", "initialDocument"], ["state"]);
         if (typeof body.state !== "string" || !/^[a-f0-9]{64}$/.test(body.state) ||
             (body.mode !== undefined && body.mode !== "standard" && body.mode !== "vip") ||
             (body.initialMjml !== undefined && (typeof body.initialMjml !== "string" || Buffer.byteLength(body.initialMjml) > 512 * 1024)) ||
             (body.mode === "vip" && (typeof body.vipAccessId !== "string" || !body.initialDocument)) ||
             (body.initialDocument !== undefined && Buffer.byteLength(JSON.stringify(body.initialDocument)) > 512 * 1024)) {
             throw http(400, "Invalid hosted builder launch");
+        }
+        const installation = await db.query("SELECT settings FROM campaigns.installation");
+        const configuredUrl = new URL(String(installation.rows[0]?.settings.publicUrl ?? ""));
+        const returnOrigin = configuredUrl.origin;
+        // Never use a client-supplied origin to authorize a callback. It only
+        // detects a tab opened through a different hostname, scheme or port.
+        if (body.returnOrigin !== undefined && body.returnOrigin !== returnOrigin) {
+            throw http(409, `This tab's origin differs from the installation Public URL origin (${returnOrigin}). Open Campaigns at its configured Public URL, or have an administrator correct Settings → Public URL before retrying. No hosted launch was created.`, "CAMPAIGNS_RETURN_ORIGIN_MISMATCH");
         }
         // A hosted launch is a sensitive boundary. Always revalidate centrally;
         // the handoff endpoint remains authoritative for VIP/access ownership.
@@ -2058,9 +2096,6 @@ export function createCampaignsRouter(options = {}) {
         const bridge = ctx.bridgeFactory(item.secret);
         if (!bridge.createHostedBuilderHandoff)
             throw http(503, "Hosted builder handoff is unavailable");
-        const installation = await db.query("SELECT settings FROM campaigns.installation");
-        const configuredUrl = new URL(String(installation.rows[0]?.settings.publicUrl ?? ""));
-        const returnOrigin = configuredUrl.origin;
         const launchInput = {
             state: body.state,
             returnOrigin,
@@ -2069,7 +2104,8 @@ export function createCampaignsRouter(options = {}) {
             ...(body.vipAccessId === undefined ? {} : { vipAccessId: String(body.vipAccessId) }),
             ...(body.initialDocument === undefined ? {} : { initialDocument: json(body.initialDocument) }),
         };
-        const launch = assertHostedBuilderLaunch(await bridge.createHostedBuilderHandoff(launchInput), String(body.state));
+        const upstreamLaunch = await bridge.createHostedBuilderHandoff(launchInput);
+        const launch = assertHostedBuilderLaunch(upstreamLaunch, String(body.state));
         await audit(ctx, request, "hosted_builder.launch", "templates", null);
         response.status(201).json({ data: launch });
     }));
@@ -2389,6 +2425,7 @@ export function createCampaignsRouter(options = {}) {
         response.set("Cache-Control", "no-store, private");
         const campaign = await getEntity(ctx, "campaigns", String(request.params.campaignId));
         assertEntityAllowed(request, "campaigns", campaign);
+        const template = await ownedTemplate(String(campaign.templateId), request);
         const audience = await resolveCampaignAudience(audienceRepository, await installationScope(db), {
             listIds: campaign.listIds, segmentIds: campaign.segmentIds,
             excludeListIds: campaign.excludeListIds, excludeSegmentIds: campaign.excludeSegmentIds,
@@ -2413,7 +2450,6 @@ export function createCampaignsRouter(options = {}) {
         }
         const variables = subscriberMergeVariables(subscriber, "{{unsubscribe_url}}");
         const missing = String(campaign.mergeMissingPolicy ?? "empty");
-        const template = await getEntity(ctx, "templates", String(campaign.templateId));
         response.json({ data: {
                 recipientCount: eligible.length, candidates,
                 recipient: { id: subscriber.id, email: subscriber.email },
@@ -2456,7 +2492,7 @@ export function createCampaignsRouter(options = {}) {
             excludeListIds: campaign.excludeListIds,
             excludeSegmentIds: campaign.excludeSegmentIds,
         }, restrictedLists(request), ctx.now().toISOString());
-        const template = await getEntity(ctx, "templates", String(campaign.templateId));
+        const template = await ownedTemplate(String(campaign.templateId), request);
         for (const subscriber of audience.recipients) {
             const variables = subscriberMergeVariables(subscriber, "{{unsubscribe_url}}");
             const missing = String(campaign.mergeMissingPolicy ?? "empty");
@@ -2486,7 +2522,7 @@ export function createCampaignsRouter(options = {}) {
         // database write, so malformed requests can never enqueue a partial send.
         const recipients = testRecipients(body);
         await validActivation(ctx);
-        const id = String(request.params.campaignId), campaign = await getEntity(ctx, "campaigns", id), template = await getEntity(ctx, "templates", String(campaign.templateId));
+        const id = String(request.params.campaignId), campaign = await getEntity(ctx, "campaigns", id), template = await ownedTemplate(String(campaign.templateId), request);
         assertEntityAllowed(request, "campaigns", campaign);
         requireCampaignSender(campaign);
         const provider = await db.query("SELECT body,secret FROM campaigns.entities WHERE kind='providers' AND id=$1 AND body->>'enabled'='true'", [campaign.providerId]);
@@ -3335,14 +3371,22 @@ export function createCampaignsRouter(options = {}) {
         if (token.length < 16)
             throw http(400, "Invalid token");
         const { subscriberId, previous } = await subscriberTransaction(db, async (tx) => {
-            const result = await tx.query("SELECT subscriber_id,job_id,consumed_at FROM campaigns.tokens WHERE token_hash=$1 AND purpose='unsubscribe' AND expires_at>now() FOR UPDATE", [hash(token)]);
+            const result = await tx.query("SELECT subscriber_id,list_id,email,job_id,consumed_at FROM campaigns.tokens WHERE token_hash=$1 AND purpose='unsubscribe' AND expires_at>now() FOR UPDATE", [hash(token)]);
             if (!result.rows[0])
                 throw http(400, "Invalid or expired token");
+            // An old mailbox retry must not revoke a fresh opt-in after this
+            // one-click token was already used.
+            if (result.rows[0].consumed_at)
+                return { subscriberId: result.rows[0].subscriber_id, previous: null };
             const resolved = await tx.query("SELECT campaigns.reconciled_subscriber_id($1::uuid) AS id", [result.rows[0].subscriber_id]);
             const subscriberId = resolved.rows[0].id;
-            // The signed token targets an ID, not the current installation scope.
+            // The server-issued opaque token targets an ID, not the current installation scope.
             const before = await tx.query("SELECT body FROM campaigns.entities WHERE kind='subscribers' AND id=$1 FOR UPDATE", [subscriberId]);
             if (!before.rows[0])
+                throw http(400, "Invalid or expired token");
+            if (String(before.rows[0].body.email).toLowerCase() !== result.rows[0].email.toLowerCase()
+                || !Array.isArray(before.rows[0].body.listIds)
+                || !before.rows[0].body.listIds.includes(result.rows[0].list_id))
                 throw http(400, "Invalid or expired token");
             if (before.rows[0].body.status !== "unsubscribed") {
                 await tx.query("UPDATE campaigns.entities SET body=body||jsonb_build_object('status','unsubscribed','unsubscribedAt',now(),'updatedAt',now()),updated_at=now() WHERE kind='subscribers' AND id=$1", [subscriberId]);
@@ -3526,9 +3570,13 @@ export function createCampaignsRouter(options = {}) {
             await onSubscribeConfirmed({ db, enqueue: enqueueSubscriptionMail }, confirmed);
         response.json({ data: { ok: true, message: "Subscription confirmed" } });
     }));
-    router.use(createAutomationsRouter({ db, mutation, need, wrap, assertListsAllowed, restrictedLists }));
+    router.use(createAutomationsRouter({
+        db, mutation, need, wrap, assertListsAllowed, restrictedLists,
+        ownedTemplate: (request, id, database) => ownedTemplate(id, request, database),
+    }));
     router.use(createExperimentsRouter({
         db, mutation, need, wrap, http, now: ctx.now,
+        ownedTemplate: (request, id, database) => ownedTemplate(id, request, database),
         scope: installationScope, lists: restrictedLists,
         allowed: (request, campaign) => assertEntityAllowed(request, "campaigns", campaign),
         activation: () => validActivation(ctx),
@@ -3825,9 +3873,7 @@ async function runCampaignsWorkerLocked(options, db) {
                 return url.toString();
             })() : undefined;
             const oneClickUnsubscribe = unsubscribe ? (() => {
-                const value = new URL(unsubscribe);
-                value.searchParams.set("oneClick", "1");
-                return value.toString();
+                return publicCampaignsOneClickUrl(baseUrl, token).toString();
             })() : undefined;
             let rendered = unsubscribe
                 ? populateUnsubscribeContent(String(template.html ?? ""), String(template.text ?? ""), unsubscribe)

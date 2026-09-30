@@ -37,7 +37,7 @@ export async function verifyMailjet(config, options) {
         try {
             const port = config.smtpPort ?? 587;
             await verifySmtp({ type: "smtp", host: "in-v3.mailjet.com", port, secure: port === 465, requireTls: port === 587, username: config.apiKey, password: config.secretKey }, options);
-            return;
+            return "verified";
         }
         catch (error) {
             if (error instanceof DeliveryError)
@@ -46,8 +46,11 @@ export async function verifyMailjet(config, options) {
         }
     }
     const response = await boundedFetch("https://api.mailjet.com/v3/REST/myprofile", { method: "GET", headers: { authorization: basic(config.apiKey, config.secretKey), accept: "application/json" } }, options, "verify");
+    if (response.status === 403)
+        return "inconclusive";
     if (!response.ok)
         throw new DeliveryError(safeProviderError(response.status, response.json), "MAILJET_VERIFY_FAILED", "not-sent", response.status);
+    return "verified";
 }
 export async function sendSmtpCom(config, message, options) {
     const parts = [
@@ -74,7 +77,10 @@ export async function sendSmtpCom(config, message, options) {
 }
 export async function verifySmtpCom(config, options) {
     const response = await boundedFetch("https://api.smtp.com/v4/account/", { method: "GET", headers: { authorization: `Bearer ${config.apiKey}`, accept: "application/json" } }, options, "verify");
+    if (response.status === 403)
+        return "inconclusive";
     if (!response.ok)
         throw new DeliveryError(safeProviderError(response.status, response.json), "SMTPCOM_VERIFY_FAILED", "not-sent", response.status);
+    return "verified";
 }
 //# sourceMappingURL=api-providers.js.map

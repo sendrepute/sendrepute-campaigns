@@ -1,0 +1,11 @@
+[Unit]
+Description=Opt-in daily SendRepute Campaigns backup
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=false
+RandomizedDelaySec=20m
+Unit=sendrepute-campaigns-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -14,6 +14,7 @@ type Bridge = {
 };
 export declare const paidDesignOperations: Set<string>;
 export declare function paidDesignScope(secret: string): string;
+export declare function blankVipDocument(): Json;
 /** No age cutoff: these records are durable entitlements, not a billing retry queue. */
 export declare class PaidDesigns {
     private db;

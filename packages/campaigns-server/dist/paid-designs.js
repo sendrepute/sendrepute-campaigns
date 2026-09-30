@@ -11,6 +11,15 @@ function implicitIdentity(scope, owner, operation, input) {
 }
 function fail(message, status = 502) { throw Object.assign(new Error(message), { status, code: "PAID_DESIGN_RECOVERY_REQUIRED" }); }
 export function paidDesignScope(secret) { return createHash("sha256").update("paid-design-v1\0").update(secret).digest("hex"); }
+// This is a native editor source, not a catalog selection or a free access
+// grant. The server snapshots it before dispatch so recovery never needs a
+// browser tab or a mutable catalog entry.
+export function blankVipDocument() {
+    return { version: 1, title: "New VIP design", preheader: "", lang: "en",
+        direction: "ltr", width: 600, background: "#ffffff", foreground: "#111111", fontFamily: "Arial",
+        rows: [{ id: "blankRow", background: "#ffffff", padding: 24,
+                columns: [{ id: "blankColumn", blocks: [] }] }] };
+}
 /** No age cutoff: these records are durable entitlements, not a billing retry queue. */
 export class PaidDesigns {
     db;
@@ -48,12 +57,16 @@ export class PaidDesigns {
             fail("Authenticated central settlement contract unavailable; no paid request sent", 409);
         let source = null;
         if (catalog) {
-            if (body.sourceKind !== "template" || typeof body.templateId !== "string")
-                fail("Durable VIP purchase requires a catalog template", 400);
-            const template = object(await this.execute("customerGetVipBuilderTemplate", { path: { templateId: body.templateId } }));
-            source = object(template.document);
+            if (body.sourceKind === "blank" && body.templateId === undefined)
+                source = blankVipDocument();
+            else if (body.sourceKind === "template" && typeof body.templateId === "string") {
+                const template = object(await this.execute("customerGetVipBuilderTemplate", { path: { templateId: body.templateId } }));
+                source = object(template.document);
+            }
+            else
+                fail("VIP access requires either a blank native source or a catalog template", 400);
             if (!Array.isArray(source.rows))
-                fail("VIP catalog did not return a canonical native document");
+                fail("VIP source did not return a canonical native document");
         }
         const inserted = await this.db.query("INSERT INTO campaigns.paid_designs(id,scope,owner_id,operation,input,source,central_account_id,central_credential_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO NOTHING RETURNING *", [id, this.scope, this.owner, operation, forwarded, source, identity.accountId, identity.credentialId]);
         if (!inserted.rows[0]) {
@@ -68,7 +81,7 @@ export class PaidDesigns {
             await this.reconcile(old);
             const current = (await this.db.query("SELECT * FROM campaigns.paid_designs WHERE id=$1 AND scope=$2 AND owner_id=$3", [id, this.scope, this.owner])).rows[0];
             if (current.status === "succeeded")
-                return { ...current.result, savedTemplateId: id };
+                return { ...current.result, ...(catalog ? { document: current.source } : {}), savedTemplateId: id };
             fail("Paid outcome is unresolved; consult /paid-designs. Do not repeat payment.", 409);
         }
         // The committed intent always precedes the only paid call.
@@ -87,11 +100,22 @@ export class PaidDesigns {
         const settled = (await this.db.query("SELECT * FROM campaigns.paid_designs WHERE id=$1 AND scope=$2 AND owner_id=$3", [id, this.scope, this.owner])).rows[0];
         if (settled?.status !== "succeeded" || settled.template_deleted_at)
             fail("Payment outcome awaits authoritative settlement; do not purchase again", 409);
-        return { ...settled.result, savedTemplateId: id };
+        return { ...settled.result, ...(catalog ? { document: settled.source } : {}), savedTemplateId: id };
     }
     async save(intent, result) {
         const standard = intent.operation === "customerCreateAiEmailTemplate";
-        const doc = object(result.document ?? intent.source);
+        const catalog = intent.operation === "customerCreateVipEmailBuilderAccess";
+        const body = object(intent.input.body);
+        if (catalog && body.sourceKind === "blank" && stable(intent.source) !== stable(blankVipDocument())) {
+            fail("Retained blank native source is invalid; recovery retained");
+        }
+        if (catalog && (result.accessId !== intent.id || result.designId !== body.designId ||
+            result.sourceKind !== body.sourceKind || (result.templateId ?? null) !== (body.templateId ?? null))) {
+            fail("Paid result does not match the owned VIP source identity; recovery retained");
+        }
+        // Catalog and blank source were committed before payment. An optional
+        // central response document must never replace that retained source.
+        const doc = object(catalog ? intent.source : result.document);
         const accessId = result.nativeAccessId ?? result.accessId;
         if (doc.version !== 1 || (standard ? doc.kind !== "mjml" || typeof doc.mjml !== "string" || !/^\s*<mjml(?:\s|>)/i.test(doc.mjml) : !Array.isArray(doc.rows) || typeof accessId !== "string" || !accessId))
             fail("Paid result lacks canonical source or owned VIP access; recovery retained");
@@ -100,7 +124,7 @@ export class PaidDesigns {
             html: "", text: "", createdAt: now, updatedAt: now,
             metadata: { paidDesignId: intent.id, paidDesignScope: intent.scope, paidDesignOwner: intent.owner_id, compilePending: true,
                 ...(standard ? { editor: "hosted-standard", mjml: doc.mjml, standardDocument: doc } : { editor: "hosted-vip", hostedDocument: doc, vipAccessId: accessId }),
-                sourceIdentity: { sourceKind: standard || intent.operation === "customerCreateVipEmailTemplate" ? "ai" : "template", designId: result.designId, accessId, ...(object(intent.input.body).templateId ? { templateId: object(intent.input.body).templateId } : {}) } } };
+                sourceIdentity: { sourceKind: standard || intent.operation === "customerCreateVipEmailTemplate" ? "ai" : body.sourceKind, designId: result.designId, accessId, ...(body.templateId ? { templateId: body.templateId } : {}) } } };
         // A single statement is atomic even on pools/mocks without connect().
         const saved = await this.db.query(`WITH saved AS (
       INSERT INTO campaigns.entities(kind,id,body)
@@ -139,11 +163,16 @@ export class PaidDesigns {
             fail("Retained paid source identity could not be verified; no template was changed", 409);
         }
         const doc = catalog ? object(intent.source) : object(result.document);
+        if (catalog && body.sourceKind === "blank" && stable(doc) !== stable(blankVipDocument())) {
+            fail("Retained blank native source is invalid; no template was changed", 409);
+        }
         const accessId = catalog ? result.accessId : standard ? result.accessId : result.nativeAccessId;
         if (doc.version !== 1 || (standard
             ? doc.kind !== "mjml" || typeof doc.mjml !== "string" || !/^\s*<mjml(?:\s|>)/i.test(doc.mjml)
             : !Array.isArray(doc.rows) || typeof accessId !== "string" || !accessId) ||
-            (catalog && (accessId !== id || result.designId !== body.designId || result.templateId !== body.templateId || result.sourceKind !== "template")) ||
+            (catalog && (accessId !== id || result.designId !== body.designId ||
+                (result.templateId ?? null) !== (body.templateId ?? null) || result.sourceKind !== body.sourceKind ||
+                !["template", "blank"].includes(String(body.sourceKind)))) ||
             (!catalog && typeof accessId !== "string")) {
             fail("Retained paid source or owned access is invalid; no template was changed", 409);
         }
@@ -152,7 +181,7 @@ export class PaidDesigns {
             html: "", text: "", createdAt: now, updatedAt: now,
             metadata: { paidDesignId: id, paidDesignScope: this.scope, paidDesignOwner: this.owner, compilePending: true,
                 ...(standard ? { editor: "hosted-standard", mjml: doc.mjml, standardDocument: doc } : { editor: "hosted-vip", hostedDocument: doc, vipAccessId: accessId }),
-                sourceIdentity: { sourceKind: catalog ? "template" : "ai", designId: result.designId, accessId,
+                sourceIdentity: { sourceKind: catalog ? body.sourceKind : "ai", designId: result.designId, accessId,
                     ...(body.templateId ? { templateId: body.templateId } : {}) } } };
         // A single INSERT ... SELECT guards owner, scope, success and tombstone at
         // commit. The deletion trigger locks the paid row against concurrent DELETE.

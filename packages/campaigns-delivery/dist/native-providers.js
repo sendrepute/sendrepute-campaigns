@@ -128,7 +128,7 @@ export async function verifyNativeApi(config, options) {
     const response = await boundedFetch(url, { method: "GET", headers }, options, "verify");
     if (response.ok)
         return "verified";
-    if ((config.type === "sendgrid" || config.type === "resend") && response.status === 403)
+    if (response.status === 403)
         return "inconclusive";
     throw new DeliveryError(safeProviderError(response.status, response.json), `${config.type.toUpperCase()}_VERIFY_FAILED`, "not-sent", response.status);
 }

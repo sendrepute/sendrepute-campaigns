@@ -60,6 +60,11 @@ export function createExperimentsRouter(d) {
         if (!r.rows[0])
             throw d.http(404, "Experiment not found");
         d.allowed(req, r.rows[0].frozen.campaign);
+        for (const variant of ["A", "B"]) {
+            const id = r.rows[0].frozen.templates?.[variant]?.id;
+            if (id)
+                await d.ownedTemplate(req, String(id), db);
+        }
         return r.rows[0];
     };
     router.get("/experiments", d.need("read"), d.wrap(async (req, res) => {
@@ -93,7 +98,7 @@ export function createExperimentsRouter(d) {
             d.allowed(req, campaign);
             if (campaign.status !== "draft" || (await db.query("SELECT 1 FROM campaigns.jobs WHERE campaign_id=$1 UNION ALL SELECT 1 FROM campaigns.experiments WHERE campaign_id=$1", [b.campaignId])).rowCount)
                 throw d.http(409, "Experiment requires an unused draft campaign");
-            const a = await entity(db, "templates", String(campaign.templateId)), bt = await entity(db, "templates", b.variantB.templateId);
+            const a = await d.ownedTemplate(req, String(campaign.templateId), db), bt = await d.ownedTemplate(req, b.variantB.templateId, db);
             const audience = await d.resolveAudience(db, await d.scope(db), campaign, d.lists(req), d.now().toISOString());
             const id = randomUUID(), assigned = partitionAudience(id, audience.recipients, b.samplePercent);
             const n = assigned.filter(x => x.arm === "A").length;

@@ -124,6 +124,10 @@ export function createAutomationsRouter(options) {
         if (!row || (!includeArchived && row.archived_at))
             throw fail(404, "Automation not found");
         assertListsAllowed(req, row.body.listIds);
+        for (const step of row.body.steps ?? []) {
+            if (step.type === "email")
+                await options.ownedTemplate(req, String(step.snapshot.template.id), tx);
+        }
         return row;
     };
     const validate = async (tx, req, raw) => {
@@ -184,7 +188,7 @@ export function createAutomationsRouter(options) {
                 assertListsAllowed(req, campaign.listIds);
                 if (!campaign.listIds?.length || campaign.listIds.some((id) => !raw.listIds.includes(id)))
                     throw fail(400, "Email campaign lists must be within automation listIds");
-                const template = (await tx.query("SELECT body FROM campaigns.entities WHERE kind='templates' AND id=$1", [campaign.templateId])).rows[0]?.body;
+                const template = await options.ownedTemplate(req, String(campaign.templateId), tx);
                 if (!template || !(await tx.query("SELECT 1 FROM campaigns.entities WHERE kind='providers' AND id=$1", [campaign.providerId])).rowCount)
                     throw fail(400, "Missing template or provider");
                 steps.push({ type: "email", campaignId: step.campaignId, snapshot: { campaign, template } });

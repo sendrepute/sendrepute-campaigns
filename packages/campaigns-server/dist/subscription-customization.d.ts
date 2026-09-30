@@ -38,6 +38,7 @@ export declare function getSubscriptionCustomization(db: SubscriptionCustomizati
 export declare function resolveListDoubleOptIn(db: SubscriptionCustomizationDb, listId: string, installationDefault: boolean): Promise<boolean>;
 export type SubscriptionCustomizationRouterDeps = {
     db: SubscriptionCustomizationDb;
+    assertTemplateAllowed: (request: Request, templateId: string) => Promise<void>;
     mutation: (request: Request, response: any, next: any) => void;
     need: (permission?: string) => any;
     wrap: (handler: (request: any, response: any) => Promise<void>) => any;

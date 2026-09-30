@@ -55,6 +55,7 @@ export declare function populateUnsubscribeContent(html: string, text: string, u
 };
 export declare function publicSubscriptionUrl(publicUrl: string, listId: string, listToken: string): string;
 export declare function publicCampaignsPageUrl(publicUrl: string, page: "subscribe" | "unsubscribe"): URL;
+export declare function publicCampaignsOneClickUrl(publicUrl: string, token: string): URL;
 declare global {
     namespace Express {
         interface Request {

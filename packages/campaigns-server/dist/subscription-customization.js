@@ -117,6 +117,8 @@ export function createSubscriptionCustomizationRouter(deps) {
         const welcome = parseMail(body.welcome, "welcome");
         const goodbye = parseMail(body.goodbye, "goodbye");
         for (const [kind, mail] of [["welcome", welcome], ["goodbye", goodbye]]) {
+            if (mail.templateId)
+                await deps.assertTemplateAllowed(request, mail.templateId);
             if (!mail.enabled)
                 continue;
             const references = await deps.db.query(`SELECT EXISTS(SELECT 1 FROM campaigns.entities WHERE kind='templates' AND id=$1) template_ok,

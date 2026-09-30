@@ -1,0 +1,18 @@
+# Install as /etc/sendrepute-campaigns/backup.conf, owned by the dedicated
+# Compose operator, mode 0600. Values are literal (no quotes, expansion or shell).
+# Leave BOTH age settings blank for automatic first-backup key creation.
+# The script asks you to save the recovery file separately once, then reuses it.
+# Existing operators can keep their manually configured matching pair.
+AGE_RECIPIENT=
+AGE_IDENTITY=
+# Private local spool, existing, mode 0700; separate from destination.
+LOCAL_DIR=
+# Choose exactly ONE: mounted off-host directory, OR SFTP fields.
+# A directory on the same disk is NOT an off-host backup.
+OFFHOST_LOCAL_DIR=
+# SFTP only: existing remote directory, dedicated restricted account, pinned
+# known_hosts entry, batch-mode authentication (no passwords in config).
+OFFHOST_SFTP_HOST=
+OFFHOST_SFTP_USER=
+OFFHOST_SFTP_DIR=
+SSH_IDENTITY=

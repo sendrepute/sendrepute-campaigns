@@ -65,14 +65,16 @@ Settings** to `https://YOUR_HOSTNAME/campaigns/`. If using Cloudflare, use
 [migration steps](docs/install.md#migrate-an-installed-public-ip-http-workspace-to-https)
 before changing a live installation.
 
-## Download v0.1.31
+## Download v0.1.32
 
-Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.31/downloads/sendrepute-campaigns-0.1.31.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.31/downloads/sendrepute-campaigns-0.1.31.tar.gz),
-verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.31/downloads/sendrepute-campaigns-0.1.31-SHA256SUMS),
+Administrators can check for stable GitHub releases in Workspace Settings. If an official versioned archive and SHA-256 checksum are attached to a newer release, Settings displays a notice and the documented manual server update command for an existing Git clone. It does not download or install software. Back up the installation first, then follow the operator upgrade and restart procedure. Archive installations must follow the separate archive upgrade instructions. GitHub failures, missing assets, and unknown installed versions are reported as unavailable, never as up to date. New release archives include their installed version metadata; older installations without this metadata cannot claim to be current. Release publishing and checksums are separate operator steps, not performed by the application.
+
+Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.32/downloads/sendrepute-campaigns-0.1.32.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.32/downloads/sendrepute-campaigns-0.1.32.tar.gz),
+verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.32/downloads/sendrepute-campaigns-0.1.32-SHA256SUMS),
 extract, and run `./setup.sh` there. These are repository downloads, **not**
 GitHub Release binary attachments; **Code → Download ZIP** is a different
-snapshot. See the [v0.1.31 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.31).
+snapshot. See the [v0.1.32 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.32).
 
 ## Update
 
@@ -99,6 +101,23 @@ private `.env` and HTTPS/Caddy state. Follow the
 [complete Docker backup commands](docs/operations.md#docker-infrastructure-backup),
 then keep encrypted, access-controlled off-host copies. An in-app JSON export
 is not an infrastructure backup.
+
+For **opt-in scheduled** encrypted off-host backups, use the included
+`backup.sh`, `backup.conf.example` and systemd examples. Nothing is scheduled
+or enabled by setup. Install `age` and configure an existing off-host mounted
+directory or restricted SFTP destination. Leave both age settings blank:
+the first interactive backup creates its recovery file automatically and asks
+you to save a separate safe copy before proceeding. Later backups reuse it;
+there are no key-generation commands or public-key values to copy into config.
+The host keeps a protected copy to verify each backup; never store your
+independent recovery copy beside the encrypted backup archives.
+See [automated backups](docs/operations.md#opt-in-encrypted-scheduled-backups)
+for prerequisites, safe activation, verification and recovery. From the installed
+directory, `./backup.sh status` shows last attempt, last success and archive;
+it remains readable if the age identity or backup tools are unavailable, provided
+the operator-owned private config and local spool/status file are intact.
+`./backup.sh verify /private/path/archive.tar.age` checks decrypt, manifest and
+PostgreSQL format without restoring data.
 
 ## Restore
 

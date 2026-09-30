@@ -58,6 +58,8 @@ export function createDeliveryReliabilityRouter(deps) {
         const state = request.query.state ? String(request.query.state) : null;
         const campaignId = request.query.campaignId ? String(request.query.campaignId) : null;
         const kind = request.query.kind ? String(request.query.kind) : null;
+        if (state && !["queued", "sending", "sent", "rejected", "unknown", "cancelled"].includes(state))
+            throw deps.http(400, "Invalid delivery job state");
         if (kind && !["campaign", "test", "optin", "automation"].includes(kind))
             throw deps.http(400, "Invalid delivery job kind");
         if (campaignId)
@@ -67,6 +69,7 @@ export function createDeliveryReliabilityRouter(deps) {
         if (request.user && Object.prototype.hasOwnProperty.call(request.user, "listIds")) {
             args.push(JSON.stringify(Array.isArray(request.user.listIds) ? request.user.listIds : []));
             where.push(`(j.automation_run_id IS NULL OR EXISTS(SELECT 1 FROM campaigns.automation_runs r JOIN campaigns.entities s ON s.kind='subscribers' AND s.id=r.subscriber_id WHERE r.id=j.automation_run_id AND r.definition->'listIds' <@ $${args.length}::jsonb AND s.body->'listIds' <@ $${args.length}::jsonb))`);
+            where.push(`(j.campaign_id IS NULL OR EXISTS(SELECT 1 FROM campaigns.entities c WHERE c.kind='campaigns' AND c.id=j.campaign_id AND jsonb_typeof(c.body->'listIds')='array' AND jsonb_array_length(c.body->'listIds')>0 AND c.body->'listIds' <@ $${args.length}::jsonb))`);
         }
         if (state) {
             args.push(state);
@@ -85,6 +88,28 @@ export function createDeliveryReliabilityRouter(deps) {
         const rows = await deps.db.query(`${jobSelect} ${clause} ORDER BY j.created_at DESC,j.id DESC LIMIT $${args.length - 1} OFFSET $${args.length}`, args);
         const count = await deps.db.query(`SELECT count(*)::text count FROM campaigns.jobs j ${clause}`, args.slice(0, -2));
         response.json({ data: rows.rows, meta: { ...p, offset: undefined, total: Number(count.rows[0]?.count ?? 0) } });
+    }));
+    router.get("/delivery/jobs/summary", deps.need("delivery:reconcile"), deps.wrap(async (request, response) => {
+        const state = request.query.state ? String(request.query.state) : null;
+        const campaignId = request.query.campaignId ? String(request.query.campaignId) : null;
+        const kind = request.query.kind ? String(request.query.kind) : null;
+        if (state && !["queued", "sending", "sent", "rejected", "unknown", "cancelled"].includes(state))
+            throw deps.http(400, "Invalid delivery job state");
+        if (kind && !["campaign", "test", "optin", "automation"].includes(kind))
+            throw deps.http(400, "Invalid delivery job kind");
+        if (campaignId)
+            await deps.assertCampaignAllowed(request, campaignId);
+        const assigned = request.user && Object.prototype.hasOwnProperty.call(request.user, "listIds")
+            ? JSON.stringify(Array.isArray(request.user.listIds) ? request.user.listIds : []) : null;
+        const result = await deps.db.query(`SELECT j.state,count(*)::text count FROM campaigns.jobs j
+       WHERE ($1::text IS NULL OR j.state=$1) AND ($2::uuid IS NULL OR j.campaign_id=$2)
+       AND ($3::text IS NULL OR j.kind=$3)
+       AND ($4::jsonb IS NULL OR (
+         (j.automation_run_id IS NULL OR EXISTS(SELECT 1 FROM campaigns.automation_runs r JOIN campaigns.entities s ON s.kind='subscribers' AND s.id=r.subscriber_id WHERE r.id=j.automation_run_id AND r.definition->'listIds' <@ $4::jsonb AND s.body->'listIds' <@ $4::jsonb))
+         AND (j.campaign_id IS NULL OR EXISTS(SELECT 1 FROM campaigns.entities c WHERE c.kind='campaigns' AND c.id=j.campaign_id AND jsonb_typeof(c.body->'listIds')='array' AND jsonb_array_length(c.body->'listIds')>0 AND c.body->'listIds' <@ $4::jsonb))
+       )) GROUP BY j.state`, [state, campaignId, kind, assigned]);
+        const counts = Object.fromEntries(["queued", "sending", "sent", "rejected", "unknown", "cancelled"].map(key => [key, Number(result.rows.find(row => row.state === key)?.count ?? 0)]));
+        response.json({ data: { counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) } });
     }));
     router.get("/delivery/jobs/:jobId", deps.need("delivery:reconcile"), deps.wrap(async (request, response) => {
         await assertAutomationJobAllowed(request, String(request.params.jobId));

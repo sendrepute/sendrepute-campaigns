@@ -1,5 +1,6 @@
 import type { DeliveryMessage, DeliveryOptions, DeliveryResult, ProviderConfig, VerificationResult } from "./types.js";
 export * from "./types.js";
+export * from "./verification-reason.js";
 export * from "./webhooks.js";
 export * from "./provider-analytics.js";
 export * from "./mailjet-reconciliation.js";

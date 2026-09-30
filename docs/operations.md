@@ -28,6 +28,16 @@ and disabled metrics must be treated as **unknown**, not zero.
 
 ## Upgrade
 
+Workspace Settings checks the latest stable GitHub release for administrators.
+When an official release archive and matching SHA-256 checksum asset are
+published, an update notice shows the documented manual server command for
+existing Git clones. It does not download or install software or restart Docker. If the
+installed archive predates embedded version metadata, the check cannot prove
+whether an upgrade is needed; use your deployment records instead. A GitHub
+failure or a release without official archive/checksum assets is reported as
+unavailable, not as "up to date." Publish archives and checksum assets as part
+of the separate release workflow; the check does not publish releases.
+
 Read the release notes, then take and verify a
 [full infrastructure backup](#docker-infrastructure-backup) before updating.
 Keep the old release and encryption key available for rollback. On the VPS,
@@ -128,6 +138,143 @@ tag/commit separately with the backup. Verify checksums after transfer and
 periodically rehearse a restore on an isolated host. Stopping the app avoids
 new database writes while the dump and volume archives are taken; PostgreSQL
 remains available for the consistent custom-format dump.
+
+### Opt-in encrypted scheduled backups
+
+The distributed `backup.sh` is **disabled until explicitly configured and
+scheduled**. It covers the bundled Compose installation only: full PostgreSQL
+custom dump, application data volume (including original encryption key),
+HTTPS site, optional Caddy volumes, `.env`, Compose and runtime configuration.
+It stops the entire Campaigns process/worker and HTTPS, keeps PostgreSQL up,
+then retries restoration of only services that were running beforehand, even
+after ordinary errors and INT/TERM. It checks that Campaigns becomes healthy
+and HTTPS is running. If either does not recover within the bounded retries,
+`status` reports `service_recovery_failed` (and whether the archive completed);
+alert and repair service availability manually. No process can guarantee
+recovery after SIGKILL, host loss or Docker failure.
+It refuses if any sending or unknown delivery job exists before or after
+stopping the worker. Investigate ambiguous provider acceptance rather than
+retrying messages; queued jobs are not automatically resent by this tool.
+It cannot discover other hosts, external workers, custom bind mounts or
+external databases: **do not enable it** for such deployments without a
+separate coordinated writer shutdown and backup plan. Schedule a maintenance
+window; app/HTTPS traffic pauses during backup. Never run it against a
+different Compose project or new checkout.
+
+On the existing VPS as the dedicated Compose operator (who must be able to
+use Docker), install `age`, `age-keygen`, `docker`, Compose v2, `sftp`, `flock`,
+`sha256sum`, `tar` and standard coreutils. Docker access is effectively root
+access. Provision an off-host mounted filesystem or a dedicated restricted
+SFTP account with a pre-existing private destination directory and pinned
+SSH host key. A local directory on the same machine is **not** off-host.
+Keep an independently secured key copy on a separate recovery host; losing
+the age identity makes archives unreadable. Do not put keys in `.env`,
+command arguments, logs, tickets or public repositories.
+
+```sh
+umask 077
+mkdir -m 700 -p /private/campaigns-backups
+sudo install -d -m 700 -o "$(id -un)" -g "$(id -gn)" /etc/sendrepute-campaigns
+sudo install -m 600 -o "$(id -un)" -g "$(id -gn)" backup.conf.example /etc/sendrepute-campaigns/backup.conf
+
+# Leave AGE_RECIPIENT and AGE_IDENTITY blank for automatic key creation.
+# Leave AGE_RECIPIENT and AGE_IDENTITY blank for automatic key creation.
+# and exactly one OFFHOST_LOCAL_DIR or OFFHOST_SFTP_HOST/USER/DIR.
+# For SFTP, optionally set SSH_IDENTITY (private mode 0600).
+./backup.sh backup
+./backup.sh status
+./backup.sh verify /private/campaigns-backups/EXACT-ARCHIVE-NAME.tar.age
+```
+
+The first interactive `backup` creates a recovery file automatically and
+shows its **path only**, never its contents. Save a copy on your recovery
+device, separate from the server and encrypted backup destination, then
+confirm the prompt. The script remembers the confirmation and reuses the
+same key for later backups. It does not stop services before this confirmation.
+Scheduled/noninteractive runs cannot acknowledge custody on your behalf.
+Existing installations with both age settings filled continue using their
+existing keys.
+
+With the default configuration path, the recovery file is
+`/etc/sendrepute-campaigns/backup.conf.keys/identity`. A custom absolute
+`CAMPAIGNS_BACKUP_CONFIG` uses its own sibling `<config>.keys/identity`.
+The configuration directory must be operator-owned, mode 0700 and free of
+symlink aliases; the key directory must remain separate from installation,
+local spool and off-host destination paths. Preserve this state across upgrades.
+The confirmation phrase is `I SAVED THE RECOVERY FILE`. Refusing or
+interrupting the prompt keeps the same generated key for the next attempt.
+Missing or inconsistent previously created key state fails closed rather
+than silently replacing the key needed by old archives.
+
+The host retains a protected identity because every backup is decrypted
+locally for integrity verification before publication. This is not an
+offline-only key design: someone with full control of the host can decrypt
+its backups. Your independent recovery copy protects against host/key loss;
+do not include it in `.env`, an application volume, or the archive destination.
+Old unencrypted backups are not converted by this setup.
+
+Use a path **outside the project** for the 0700 local spool. Config must be
+owned by the invoking operator with mode 0600/0400; identity likewise.
+`./backup.sh status` needs only that private config and the operator-owned
+0700 local spool with a regular, operator-owned 0600/0400 status file; it does
+not require the age identity or backup tools. Missing or insecure paths still
+cause status to fail. Backup, verify and extract retain their full preflight.
+For mounted destinations the existing off-host directory must be mode 0700.
+It must also be owned by the invoking operator and support atomic hard links:
+the script first writes a private temporary encrypted file, compares bytes,
+and publishes without overwriting any existing name (including dangling
+symlinks). A destination without this filesystem property fails closed.
+SFTP paths are restricted to absolute simple ASCII paths without `..`;
+SSH uses batch mode and strict host-key checking; no remote shell or
+interpolated command is executed. Give the SFTP account write/read access
+only to the destination, and monitor remote capacity. Backups require space
+for plaintext *temporary staging* (mode 0700) plus encrypted local archive;
+the script removes staging on exit. Use an encrypted host disk if plaintext
+swap/crash recovery is a concern. The remote encrypted bytes are read back
+and compared. No existing archive is deleted or rotated automatically;
+after independent recovery testing, manage retention only for these owned,
+verified archives and never delete pre-existing backups without authorization.
+
+To schedule **only after a successful manual run**, copy `backup.service.example`
+and `backup.timer.example` to `/etc/systemd/system/sendrepute-campaigns-backup.service`
+and `.timer`. Replace `REPLACE_OPERATOR` and
+`REPLACE_ABSOLUTE_INSTALL_DIRECTORY` in the service with the actual user and
+installed directory, inspect with `systemd-analyze verify`, then run:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now sendrepute-campaigns-backup.timer
+systemctl list-timers sendrepute-campaigns-backup.timer
+./backup.sh status
+```
+
+To disable: `sudo systemctl disable --now sendrepute-campaigns-backup.timer`.
+The timer does not run automatically on boot to catch up missed runs. Status
+shows last attempt, success timestamp and archive even after a later failure.
+Failures also emit a non-secret syslog message via `logger`; route syslog alerts
+through your existing monitoring and alert on stale last success. No paid AI
+or external notification endpoint is used. If status indicates failure, check
+disk/remote access, services, unknown jobs and operator-owned status; do not
+assume a failed backup is recoverable.
+
+`./backup.sh verify /absolute/path/archive.tar.age` independently decrypts
+to private temporary storage, checks tar and SHA-256 manifest and runs
+`pg_restore -l` in the pinned Postgres image, without writing to a database
+or starting Campaigns. It also checks every nested volume tar member: absolute
+paths, parent traversal, symlinks, hardlinks and special files fail closed;
+if an existing legitimate app/Caddy volume contains links, investigate and
+plan a separate manual verified recovery rather than bypassing validation.
+Age recipient encryption does not prove *who* created a backup; accept only
+archives from the operator-controlled storage and compare out-of-band archive
+fingerprints when transferring untrusted copies. For a recovery rehearsal,
+`./backup.sh extract /absolute/path/archive.tar.age /absolute/empty/private/dir`
+requires an existing empty mode-0700 directory and only extracts verified
+files. The **destructive** restore is deliberately not automated. Use the
+matching release on an isolated empty installation, block outbound email,
+and follow [restore to an empty isolated installation](#restore-to-an-empty-isolated-installation)
+using the extracted directory as `BACKUP_DIR`. Do not start the worker until
+queued/sending/unknown outcomes are reconciled; restoring old state can
+otherwise repeat sends and other side effects.
 
 ### Restore to an empty isolated installation
 
@@ -240,6 +387,59 @@ delivery events. Restoring a version 2 export never changes delivery history
 and never queues mail. Keep the matching database backup when delivery audit
 history must also be recoverable.
 
+## Templates page tabs
+
+The Templates page (`/templates`) has three tabs, in this order:
+
+1. **Saved Library** (default). Your authored designs: search, paging, the
+   paid-design recovery notice, edit and delete. Opening the page loads only the
+   saved list and the connection status; no Standard or VIP catalog request is
+   made until you choose one of those tabs.
+2. **Standard**. The 20 free Standard designs, the Blank canvas card and the AI
+   Template card. There is no separate "New Design" or "Open blank" button; the
+   Blank canvas card is the only blank entry point. The legacy
+   `/templates#design-gallery` link (and `#standard`) opens this tab. The
+   selected tab is mirrored in the URL hash (`#standard`, `#vip`; none for Saved),
+   so following a tab link on the same page switches tabs.
+3. **VIP**. Shown only after the connection status has loaded and reports an
+   active, unexpired VIP entitlement for the current connected key. It is never
+   shown while the status is loading. If the entitlement is lost or expires while
+   VIP is selected, the page returns to Saved Library. The Blank canvas card
+   (quoted before payment) and VIP AI card stay in this tab. Hiding the tab is a
+   convenience only; the server still enforces VIP access on every request.
+
+While the chosen catalog list is loading, that tab shows small placeholder cards
+next to its Blank canvas and AI cards (no page-wide overlay). A catalog already
+cached for the current connection appears immediately; a load error replaces the
+placeholders with the error and Retry, so they never spin indefinitely.
+
+Only the chosen designer's catalog is mounted, so Standard and VIP never issue
+requests or show busy states for each other. A free catalog design returned from
+the editor continues to the unsaved new-template editor; a paid design already
+saved on the server opens its Saved Library entry. The browser-local demo uses
+the same tab rules with its synthetic VIP entitlement, but does not run hosted
+builders, blank canvases, catalog imports, AI or paid analysis. It never sends
+real mail or charges the connected wallet.
+
+The Standard hosted editor works with MJML: its 20 catalog designs and blank
+canvas are free, while Standard AI generation is separately quoted and paid.
+VIP is a proprietary native document, **not MJML**. Active VIP membership alone
+does not include native builder access or AI generation. Native catalog/blank
+access and VIP AI generation each require their own displayed price and explicit
+consent. Both paid AI modes create an owned Saved Library design; free compilation
+or reopening its source is not a second paid generation. If a paid result is
+interrupted, recover that owned entry instead of placing another order. A normal
+hosted-editor return only populates the current draft; saving it does not send
+mail or automatically create a reusable template.
+
+In campaign Review, paid content analysis is separate from paid Rewrite All.
+Rewrite All requires an owned paid analysis receipt (not a free preview), a
+free quote and explicit consent before a wallet debit. The returned draft must
+be inspected; classifier results do not guarantee inbox placement. Do not
+repeat a paid request when its outcome is uncertain; recover the original
+receipt first. Self-hosted Campaigns can send through the configured provider;
+the browser-local demo cannot send.
+
 ## Unresolved paid designs
 
 Keep the purchase reference when a paid design does not appear. A timeout, a
@@ -280,12 +480,18 @@ locks, or adjust balances directly as a recovery procedure.
 - **Messages rejected/deferred:** read the provider response, verify the sender
   domain, SPF/DKIM/DMARC, suppression state, rate limits and credentials.
   Retrying permanent failures can harm reputation.
-- **SES webhook returns 503:** this is intentional in the standalone release;
-  no Amazon SNS signature verifier is configured, so SES webhook ingestion is
-  unsupported and fails closed.
-- **Hosted editor is unavailable:** no safe published hosted-editor handoff
-  exists yet. Use available local template editing; never move API keys into
-  the browser to work around this limitation.
+- **SES webhook returns 503:** configure and save an SNS topic ARN allowlist in
+  the SES provider metadata. Configure SES configuration-set events to publish
+  to that SNS topic, subscribe the public HTTPS webhook URL, and confirm the
+  signed SNS subscription manually in AWS. SNS signatures and topic allowlists
+  are checked by the server. A saved ARN or provider connection check does not
+  confirm that events are arriving; check the last attributed webhook event in
+  Provider analytics after an authorized test. No test email is sent automatically.
+- **Hosted editor is unavailable:** check that the central service supports
+  one-use hosted handoffs, the installation Public URL has the correct origin,
+  and the API key includes `builder:write` (plus `vip:builder` for VIP mode).
+  Use local template editing if the central service does not offer the route;
+  never move API keys into the browser.
 - **Tracking links wrong:** correct the public URL and proxy headers before
   sending. Existing delivered messages cannot be rewritten.
 - **SendRepute action denied:** verify API-key scopes, account status/balance
@@ -295,3 +501,5 @@ locks, or adjust balances directly as a recovery procedure.
 
 Health checks show process/database readiness only; they do not prove that a
 mail provider or SendRepute is reachable.
+
+# Edit config privately: LOCAL_DIR,
