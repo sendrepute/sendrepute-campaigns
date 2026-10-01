@@ -1004,6 +1004,12 @@ export function createCampaignsRouter(options = {}) {
     // early migration failure become a process-level unhandled rejection.
     void ctx.ready.catch(() => undefined);
     const router = Router();
+    // Standalone page routing must use the same installation row as /status,
+    // after migrations complete, without depending on a browser's cached status.
+    router.isInstalled = async () => {
+        await ctx.ready;
+        return installed(ctx);
+    };
     router.use("/subscribers/import", express.text({ type: "text/csv", limit: MAX_BODY }));
     router.use((request, _response, next) => {
         if (options.trustProxy !== undefined && request.app.get("trust proxy") !== options.trustProxy) {

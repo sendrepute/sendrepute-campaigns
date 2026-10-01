@@ -26,16 +26,33 @@ fresh supported Ubuntu server without Docker, it requests consent to install
 Ubuntu's packages. It does not remove Snap Docker or bypass AppArmor. Do not
 clone over an existing installation; see [Update](#update).
 
-For a new owner, follow the URL printed by setup and enter the corresponding
-Public URL ending in `/campaigns/`. Setup does **not** print the one-time owner
-token; retrieve it only when needed on the VPS with
-`docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token`
-(`sudo docker compose` if required). Keep the token, `.env` and logs private.
+**CAMPAIGNS READY FOR OWNER SETUP** means the app is healthy inside its
+container, not that owner setup is complete or public HTTPS has been verified.
+For HTTPS, first verify the printed installation page from another network:
+it must have a valid, trusted certificate with no browser warnings. If the
+certificate is pending or invalid, do **not** enter any secrets.
+
+For a new owner, the one-time token is **required**, not optional. Once your
+chosen access is ready, run this on the VPS **from the project directory**:
+
+```sh
+sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token
+```
+
+Omit `sudo` if your Docker account does not require it. Copy the command output
+and paste it into the **Setup token** field on the printed installation page.
+Fill in the owner details and corresponding Public URL ending in `/campaigns/`,
+then complete SendRepute activation and owner setup in the wizard. Setup does
+**not** print the token automatically. Never put it in a URL or share it; keep
+the token, `.env` and logs private. An already installed workspace does not
+need another setup token.
 
 ## Choose access
 
 - **HTTPS domain (recommended):** setup starts the included Caddy proxy.
-  Point the hostname's DNS `A` record to the VPS, allow TCP 80/443 and check
+  Enter a subdomain you control, for example `campaigns.example.com` (replace
+  with your own), with **no scheme, port or path**. Point that hostname's DNS
+  `A` record to this server, allow TCP 80/443 and check
   the trusted certificate externally. Use `AAAA` only with working IPv6.
 - **Local / SSH tunnel:** binds the app to VPS loopback. Open it through a
   trusted SSH tunnel from your computer; your laptop's `localhost` is not
@@ -65,16 +82,16 @@ Settings** to `https://YOUR_HOSTNAME/campaigns/`. If using Cloudflare, use
 [migration steps](docs/install.md#migrate-an-installed-public-ip-http-workspace-to-https)
 before changing a live installation.
 
-## Download v0.1.33
+## Download v0.1.34
 
 Administrators can check for stable GitHub releases in Workspace Settings. Official versioned Release archive and SHA-256 checksum attachments are preferred. If those expected attachments are absent, the checker can instead resolve the same stable release tag in the official repository to its immutable commit and validate that commit's bounded `downloads/` checksum manifest. Repository download links are pinned to that commit, not a movable tag or branch. Invalid or duplicate expected attachments never permit this fallback. Settings displays an update notice, download/checksum links and the documented manual server update command for an existing Git clone; it never installs, extracts or executes a download. Back up the installation first, then follow the operator upgrade and restart procedure. Archive installations must follow the separate archive upgrade instructions and verify the downloaded bytes against the checksums. GitHub failures, absent or malformed publication metadata, and unknown installed versions are reported as unavailable, never as up to date. New release archives include their installed version metadata; older installations without this metadata cannot claim to be current. Release publishing and checksums are separate operator steps, not performed by the application.
 
-Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.33/downloads/sendrepute-campaigns-0.1.33.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.33/downloads/sendrepute-campaigns-0.1.33.tar.gz),
-verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.33/downloads/sendrepute-campaigns-0.1.33-SHA256SUMS),
+Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.34/downloads/sendrepute-campaigns-0.1.34.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.34/downloads/sendrepute-campaigns-0.1.34.tar.gz),
+verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.34/downloads/sendrepute-campaigns-0.1.34-SHA256SUMS),
 extract, and run `./setup.sh` there. These are repository downloads, **not**
 GitHub Release binary attachments; **Code → Download ZIP** is a different
-snapshot. See the [v0.1.33 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.33).
+snapshot. See the [v0.1.34 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.34).
 
 ## Update
 

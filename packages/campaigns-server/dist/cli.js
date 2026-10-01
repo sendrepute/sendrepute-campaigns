@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import express from "express";
 import { resolve } from "node:path";
 import { campaignsDatabaseUrl, createCampaignsRouter, startCampaignsWorker } from "./index.js";
+import { createStandaloneCampaignsApp } from "./standalone-app.js";
 const databaseUrl = campaignsDatabaseUrl();
 if (!databaseUrl) {
     console.error("DATABASE_URL is required");
@@ -14,26 +14,12 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 const dataDir = process.env.CAMPAIGNS_DATA_DIR;
 const publicDir = process.env.CAMPAIGNS_PUBLIC_DIR;
-const app = express();
-app.disable("x-powered-by");
-app.set("trust proxy", process.env.CAMPAIGNS_TRUST_PROXY === "true" ? 1 : false);
-app.use(express.json({ limit: "4mb", type: ["application/json", "application/*+json"],
-    verify: (request, _response, buffer) => {
-        // Preserve integer Mailjet MessageID before JSON.parse rounds it.
-        if (/^\/api\/campaigns\/webhooks\//.test(request.url ?? ""))
-            request.rawWebhookBody = Buffer.from(buffer);
-    },
-}));
 const campaignsRouter = createCampaignsRouter({ databaseUrl, dataDir });
-app.use(campaignsRouter.publicTrackingRouter);
-// Preserve links already sent by older releases that placed the public
-// tracking route beneath the standalone UI prefix.
-app.use("/campaigns", campaignsRouter.publicTrackingRouter);
-app.use("/api/campaigns", campaignsRouter);
-if (publicDir) {
-    app.use("/campaigns", express.static(resolve(publicDir), { index: "index.html", fallthrough: true }));
-    app.get("/campaigns/*path", (_request, response) => response.sendFile(resolve(publicDir, "index.html")));
-}
+const app = createStandaloneCampaignsApp({
+    campaignsRouter,
+    publicDir,
+    trustProxy: process.env.CAMPAIGNS_TRUST_PROXY === "true",
+});
 app.listen(port, () => {
     console.log(`SendRepute Campaigns listening on http://127.0.0.1:${port}`);
     console.log(`Installer token: ${resolve(dataDir ?? ".campaigns-data", "installer-token")}`);

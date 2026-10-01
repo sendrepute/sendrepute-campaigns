@@ -289,12 +289,15 @@ else
       [ -z "$host" ] || die '--host is only for public modes'
       bind=127.0.0.1 proxy=false domain= ;;
     https)
+      say '  Use a subdomain you control, for example campaigns.example.com (replace with your own).'
+      say '  Point its public DNS A record to this server; use AAAA only with working IPv6.'
+      say '  Enter only the hostname: no scheme (https://), port or path.'
       if [ -z "$host" ]; then
         [ "$interactive" = true ] || die 'HTTPS requires --host DNS_NAME'
         while :; do
-          ask '  Public DNS hostname (no scheme or port): '
+          ask '  Public DNS hostname (no scheme, port or path): '
           if valid_domain "$answer"; then host=$answer; break; fi
-          note 'Enter a valid public DNS hostname (not an IP address or reserved domain).'
+          note 'Enter your own valid public DNS hostname, without scheme, port or path (not an IP address or reserved example domain).'
         done
       fi
       valid_domain "$host" || die 'HTTPS requires a valid DNS hostname (not an IP address)'
@@ -433,6 +436,7 @@ say '  ================================================================'
 if [ "$status" = needs-setup ]; then say '  CAMPAIGNS READY FOR OWNER SETUP'
 else say '  CAMPAIGNS RUNNING'; fi
 say '  ================================================================'
+panel_line 'Readiness confirms local container health only, not public reachability or valid HTTPS.'
 case "$mode" in
   local)
     say '  ACCESS'
@@ -464,14 +468,32 @@ case "$mode" in
     if [ "$status" = needs-setup ]; then panel_line "Setup page (unverified): https://$domain/campaigns/install"
     else panel_line "App page (unverified): https://$domain/campaigns/"; fi
     panel_line "Wizard Public URL: https://$domain/campaigns/"
-    panel_line 'Do not treat local container health as proof of public HTTPS reachability.' ;;
+    panel_line 'Do not treat local container health as proof of public HTTPS reachability.'
+    panel_line 'Do not enter any secrets until this HTTPS page has a valid, trusted certificate with no browser warnings.' ;;
 esac
 say ''
 say '  NEXT STEP'
 if [ "$status" = needs-setup ]; then
-  panel_line 'Initial owner setup is still needed. Retrieve the one-time token only when ready:'
-  panel_line '  sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token'
-  panel_line 'If your Docker account does not require sudo, omit sudo. Never include the token in a URL or share it.'
+  panel_line 'REQUIRED: Complete the one-time owner setup; Campaigns is not installed yet.'
+  case "$mode" in
+    https)
+      panel_line '1) Verify the HTTPS installation page above from another network.'
+      panel_line '   If the certificate is pending or invalid, STOP: do not enter the token, password or API key.'
+      panel_line '   Continue only with a valid, trusted certificate and no browser warnings.' ;;
+    local)
+      panel_line '1) Open the installation page above through the trusted SSH tunnel (or locally on this server).' ;;
+    http)
+      panel_line '1) Open the unencrypted installation page above only if you accept the stated HTTP risk.' ;;
+  esac
+  panel_line '2) On this server, from this project directory, retrieve the required one-time token:'
+  if [ "$use_sudo" = true ]; then
+    panel_line '   sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token'
+  else
+    panel_line '   docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token'
+  fi
+  panel_line '3) Copy the command output and paste it into the "Setup token" field on the installation page.'
+  panel_line '4) Fill in the owner details and Public URL, then complete SendRepute activation and owner setup in the wizard.'
+  panel_line 'Setup never prints the token automatically. Keep it private; never put it in a URL or share it.'
 else
   panel_line 'Owner setup is already complete; no setup token is needed.'
 fi

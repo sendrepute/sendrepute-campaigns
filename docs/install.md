@@ -75,6 +75,12 @@ not work, investigate it rather than assuming it is safe to replace.
 
 The guided network choice determines the address to open:
 
+For **Public DNS hostname**, enter a subdomain you control, for example
+`campaigns.example.com` (replace it with your own). Enter only the hostname:
+**no scheme (`https://`), port or path**. Point that exact hostname's public
+DNS `A` record to this server; use `AAAA` only with working IPv6. The example
+is illustrative, not a hostname to use for your installation.
+
 | Choice | Installation address | Before choosing |
 | --- | --- | --- |
 | Local only | `http://localhost:8080/campaigns/install` **on the server** | The app listens on host loopback. For access from another computer, use a trusted SSH tunnel or configure a trusted reverse proxy. `localhost` on your laptop is not the remote server. |
@@ -96,20 +102,33 @@ The **Workspace name** in Settings appears on public subscribe and unsubscribe
 pages instead of the product name. Set it to a name recipients recognize; it
 does not change the Public URL.
 
+**CAMPAIGNS READY FOR OWNER SETUP** confirms local container health only:
+owner setup is still required, and public access and HTTPS have not been
+verified. For HTTPS, first open the printed installation page from another
+network and verify a valid, trusted certificate with no browser warnings.
+If the certificate is pending or invalid, stop; do **not** enter the setup
+token, owner password or API key until HTTPS is valid.
+
 There is no default administrator account or password. On first boot the server
-generates a random setup token inside its protected data volume. Setup does
-**not** print the token automatically; when the app is ready, retrieve it
-explicitly on the host:
+generates a random setup token inside its protected data volume. For a new,
+uninstalled owner, this one-time token is **required**, not optional. Setup does
+**not** print it automatically. Once your chosen access is ready, retrieve it
+explicitly **on the server, from the same cloned or extracted project directory**:
 
 ```sh
-docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token
+sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-token
 ```
 
-If Docker requires privilege, use `sudo docker compose exec` instead. This
+Omit `sudo` if your Docker account does not require it. This
 command prints the secret to your terminal; protect terminal history/capture.
-Use the wizard to create the owner with a strong unique password. The setup
+Copy the command output and paste it into the **Setup token** field on the
+installation page (also labelled **Installer setup token**). Fill in the owner
+details with a strong unique local administrator password and the corresponding
+Public URL, then complete SendRepute activation and owner setup in the wizard.
+Never put the token in a URL or share it in a support message. The setup
 transaction can succeed only once; the token cannot create another owner
-afterward. A setup token is not an administrator password.
+afterward. An already installed workspace does not need another setup token.
+A setup token is not an administrator password.
 
 On a rerun, preserve the existing private `.env`, PostgreSQL and application
 volumes, and encryption key. Review and confirm any proposed reconfiguration;
@@ -153,8 +172,10 @@ backend, which stays bound to host loopback. DNS only resolves a name; it does
 **not** forward 443 to the app's port 8080. If using Cloudflare's proxy, set
 its origin SSL/TLS mode to **Full (strict)**, never Flexible. ACME still needs
 reachable ports and working DNS; confirm the actual trusted certificate and
-HTTPS URL **from another network**. For the new owner, open
-`https://YOUR_HOSTNAME/campaigns/install` and enter
+HTTPS URL **from another network**. Do not enter secrets while the certificate
+is pending or invalid. For the new owner, after the trusted certificate is
+verified, open `https://YOUR_HOSTNAME/campaigns/install`, paste the required
+one-time token into **Setup token**, complete the owner details/activation and enter
 `https://YOUR_HOSTNAME/campaigns/` as the wizard Public URL, with the trailing
 slash.
 

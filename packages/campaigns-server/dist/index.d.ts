@@ -99,6 +99,7 @@ export declare function resolveCampaignAudience(repository: AudienceRepository, 
 }>;
 export declare function createCampaignsRouter(options?: CampaignsRouterOptions): Router & {
     publicTrackingRouter: Router;
+    isInstalled: () => Promise<boolean>;
 };
 export interface CampaignsWorkerOptions extends CampaignsRouterOptions {
     batchSize?: number;
