@@ -82,16 +82,16 @@ Settings** to `https://YOUR_HOSTNAME/campaigns/`. If using Cloudflare, use
 [migration steps](docs/install.md#migrate-an-installed-public-ip-http-workspace-to-https)
 before changing a live installation.
 
-## Download v0.1.34
+## Download v0.1.35
 
 Administrators can check for stable GitHub releases in Workspace Settings. Official versioned Release archive and SHA-256 checksum attachments are preferred. If those expected attachments are absent, the checker can instead resolve the same stable release tag in the official repository to its immutable commit and validate that commit's bounded `downloads/` checksum manifest. Repository download links are pinned to that commit, not a movable tag or branch. Invalid or duplicate expected attachments never permit this fallback. Settings displays an update notice, download/checksum links and the documented manual server update command for an existing Git clone; it never installs, extracts or executes a download. Back up the installation first, then follow the operator upgrade and restart procedure. Archive installations must follow the separate archive upgrade instructions and verify the downloaded bytes against the checksums. GitHub failures, absent or malformed publication metadata, and unknown installed versions are reported as unavailable, never as up to date. New release archives include their installed version metadata; older installations without this metadata cannot claim to be current. Release publishing and checksums are separate operator steps, not performed by the application.
 
-Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.34/downloads/sendrepute-campaigns-0.1.34.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.34/downloads/sendrepute-campaigns-0.1.34.tar.gz),
-verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.34/downloads/sendrepute-campaigns-0.1.34-SHA256SUMS),
+Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.35/downloads/sendrepute-campaigns-0.1.35.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.35/downloads/sendrepute-campaigns-0.1.35.tar.gz),
+verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.35/downloads/sendrepute-campaigns-0.1.35-SHA256SUMS),
 extract, and run `./setup.sh` there. These are repository downloads, **not**
 GitHub Release binary attachments; **Code → Download ZIP** is a different
-snapshot. See the [v0.1.34 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.34).
+snapshot. See the [v0.1.35 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.35).
 
 ## Update
 

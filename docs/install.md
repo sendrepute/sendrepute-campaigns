@@ -396,6 +396,15 @@ test the external browser address and certificate independently. Configuration
 is unavailable in hosted previews and other setups without the managed Caddy
 profile. No customer DNS is modified.
 
+**Already using HTTPS through Cloudflare or another reverse proxy?** This
+Caddy setup is optional. If your existing setup already serves Campaigns over
+HTTPS, skip this section and leave that setup in place. Keep the installation
+Public URL set to `https://your-domain/campaigns/`. Caddy's `not-configured`
+status describes only the included Caddy proxy, not the security of your public
+URL. Cloudflare's browser-facing certificate alone does not prove the origin
+connection is encrypted: use **Full (strict)** with a valid origin certificate
+for a proxied origin, or a securely configured Cloudflare Tunnel.
+
 For your own certificate, choose **Upload my certificate** and submit an
 unencrypted PEM private key and matching PEM fullchain from the administrator
 page over HTTPS or localhost. The private key never appears in a response or
@@ -423,6 +432,32 @@ separate campaign-link and web-version hostnames. It does **not** issue HTTPS
 certificates for them. Route each such hostname and base path to Campaigns
 through a reverse proxy with its own trusted TLS certificate; the managed
 installation Caddy hostname setting does not configure additional hosts.
+
+For a separate subdomain such as `links.example.com`, leave **Base path** at
+`/`. An additional path such as `/tracking/` is only for an explicitly configured
+proxy mapping; entering a path here does not configure that mapping.
+
+Before clicking **Check DNS and verify**, complete both DNS requirements:
+
+1. Create the challenge in Campaigns.
+2. Connect the bare hostname `links.example.com` to this installation using an
+   A/AAAA record for the server's public address, an appropriate CNAME, or a
+   Cloudflare Tunnel public-hostname configuration. Do not add `_sendrepute`
+   to this routing record.
+3. Separately publish the exact TXT name and value displayed by Campaigns.
+   `_sendrepute.links.example.com` is the ownership record, not the hostname
+   used to open links. Keep both the routing record and the TXT record.
+4. Once DNS is visible publicly, click **Check DNS and verify**. The check
+   requires both public address resolution for the bare hostname and the
+   matching TXT value. Adding only TXT cannot pass this check.
+5. Configure and test HTTPS and proxy routing to the same Campaigns instance
+   before using the domain for real sends. Select the verified domain in each
+   campaign's **Tracking domain** field; verification does not select it
+   automatically or replace the installation domain.
+
+Verification proves DNS ownership, not working TLS or proxy routing. The
+application does not create these DNS records or configure the additional
+proxy hostname for you.
 
 Use the **same** `--profile https` option on later Compose upgrades. Caddy
 persists ACME certificate state in `campaigns-caddy-data`; retain that volume

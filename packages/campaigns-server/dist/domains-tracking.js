@@ -1,8 +1,9 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { domainToASCII } from "node:url";
-import { promises as dns } from "node:dns";
 import { Router } from "express";
+import { createSystemDnsVerifier, isAbsentDnsError, systemDnsVerifier } from "./domain-dns.js";
+export { systemDnsVerifier } from "./domain-dns.js";
 const VERIFY_PREFIX = "sendrepute-domain-verification=";
 const PIXEL = Buffer.from("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=", "base64");
 const RESERVED_SUFFIXES = [".localhost", ".local", ".internal", ".test", ".invalid", ".example", ".onion"];
@@ -62,38 +63,41 @@ export function verificationRecordName(hostname) {
 export function verificationRecordValue(challenge) {
     return `${VERIFY_PREFIX}${challenge}`;
 }
-export const systemDnsVerifier = {
-    resolveTxt: hostname => dns.resolveTxt(hostname),
-    async resolveAddresses(hostname) {
-        const results = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)]);
-        return results.flatMap(result => result.status === "fulfilled" ? result.value : []);
-    },
-};
-export async function verifyDomainChallenge(hostnameValue, challenge, resolver = systemDnsVerifier) {
-    const hostname = normalizeCustomDomain(hostnameValue);
-    let addresses;
-    try {
-        addresses = await resolver.resolveAddresses(hostname);
-    }
-    catch {
-        throw httpError(422, "Domain does not resolve to a public host");
-    }
-    if (!addresses.length)
-        throw httpError(422, "Domain does not resolve to a public host");
-    if (addresses.some(address => !isIP(address) || privateAddress(address))) {
-        throw httpError(422, "Domain resolves to a private or reserved address");
-    }
-    let records;
-    try {
-        records = await resolver.resolveTxt(verificationRecordName(hostname));
-    }
-    catch {
-        throw httpError(422, "DNS verification TXT record was not found");
-    }
-    const expected = verificationRecordValue(challenge);
-    if (!records.some(parts => parts.join("") === expected))
-        throw httpError(422, "DNS verification TXT record was not found");
+/** Factory injection keeps lifecycle tests independent of process-wide DNS state. */
+export function createDomainChallengeVerifier(createDnsVerifier = createSystemDnsVerifier) {
+    return async function verifyDomainChallenge(hostnameValue, challenge, injectedResolver) {
+        const hostname = normalizeCustomDomain(hostnameValue);
+        let resolver;
+        let addresses;
+        try {
+            // Even compatibility callers passing systemDnsVerifier explicitly use
+            // one fresh resolver for A, AAAA and TXT within this attempt.
+            resolver = !injectedResolver || injectedResolver === systemDnsVerifier ? createDnsVerifier() : injectedResolver;
+            addresses = await resolver.resolveAddresses(hostname);
+        }
+        catch (error) {
+            throw httpError(422, isAbsentDnsError(error) ? "Domain does not resolve to a public host" :
+                "DNS address lookup failed. Check the DNS resolver configured on the Campaigns server and retry.");
+        }
+        if (!addresses.length)
+            throw httpError(422, "Domain does not resolve to a public host");
+        if (addresses.some(address => !isIP(address) || privateAddress(address))) {
+            throw httpError(422, "Domain resolves to a private or reserved address");
+        }
+        let records;
+        try {
+            records = await resolver.resolveTxt(verificationRecordName(hostname));
+        }
+        catch (error) {
+            throw httpError(422, isAbsentDnsError(error) ? "DNS verification TXT record was not found" :
+                "DNS verification TXT lookup failed. Check the DNS resolver configured on the Campaigns server and retry.");
+        }
+        const expected = verificationRecordValue(challenge);
+        if (!records.some(parts => parts.join("") === expected))
+            throw httpError(422, "DNS verification TXT record was not found");
+    };
 }
+export const verifyDomainChallenge = createDomainChallengeVerifier();
 function safeStyle(value) {
     return /(?:expression|url\s*\(|@import|behavior|javascript:|-moz-binding)/i.test(value) ? "" : value;
 }
@@ -343,7 +347,6 @@ export function createDomainsTrackingRouter(deps) {
     const router = Router();
     const fail = deps.http ?? httpError;
     const now = deps.now ?? (() => new Date());
-    const resolver = deps.dns ?? systemDnsVerifier;
     const uuid = (value) => {
         if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
             throw fail(400, "Invalid domain ID");
@@ -405,7 +408,7 @@ export function createDomainsTrackingRouter(deps) {
         if (!row)
             throw fail(404, "Domain not found");
         try {
-            await verifyDomainChallenge(row.hostname, row.challenge, resolver);
+            await verifyDomainChallenge(row.hostname, row.challenge, deps.dns);
         }
         catch (error) {
             const message = error instanceof Error ? error.message.slice(0, 500) : "DNS verification failed";
