@@ -1,0 +1,101 @@
+name: Attach verified Campaigns release assets
+
+# Owner-installed documentation template: docs/ is not an executable workflow.
+# In GitHub's editor, move this file to .github/workflows/ and commit to main,
+# then run it manually from Actions with releaseTag=v0.1.32.
+# Install only in sendrepute/sendrepute-campaigns on its main branch.
+# Copies the already-built, audited v0.1.32 downloads; never builds or deploys.
+on:
+  workflow_dispatch:
+    inputs:
+      releaseTag:
+        description: Existing audited release to attach (only v0.1.32 is allowed)
+        required: true
+        default: v0.1.32
+        type: choice
+        options:
+          - v0.1.32
+
+permissions: {}
+
+concurrency:
+  group: attach-campaigns-${{ inputs.releaseTag }}
+  cancel-in-progress: false
+
+jobs:
+  attach:
+    if: github.repository == 'sendrepute/sendrepute-campaigns' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: sendrepute/sendrepute-campaigns
+      RELEASE_TAG: ${{ inputs.releaseTag }}
+      EXPECTED_COMMIT: 246169bbc16e49095214a3901b221b9638377722
+    steps:
+      - name: Validate, copy exact tagged downloads, attach, and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GH_REPO" == "sendrepute/sendrepute-campaigns" ]]
+          [[ "$RELEASE_TAG" == "v0.1.32" ]] || {
+            echo "::error::Only the verified v0.1.32 release is authorized."
+            exit 1
+          }
+          base="sendrepute-campaigns-0.1.32"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          cd "$work"
+
+          validate_tag() {
+            gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" |
+              jq -e --arg commit "$EXPECTED_COMMIT" \
+                '.object.type == "commit" and .object.sha == $commit' >/dev/null
+          }
+          validate_tag
+          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > release.json
+          jq -e --arg tag "$RELEASE_TAG" --arg commit "$EXPECTED_COMMIT" \
+            '.id == 400520781 and .tag_name == $tag and .target_commitish == $commit
+             and .draft == false and .prerelease == false' release.json >/dev/null
+          if ! jq -e '.assets | length == 0' release.json >/dev/null; then
+            echo "::error::Release already has attachments; refusing to replace or delete assets. Review any partial upload manually."
+            exit 1
+          fi
+
+          # Resolve the tag first, then use the immutable commit for every download.
+          # No checkout, extraction, build, installation, or application execution.
+          for name in "$base.zip" "$base.tar.gz" "$base-SHA256SUMS"; do
+            curl --fail --silent --show-error --location \
+              --proto '=https' --proto-redir '=https' \
+              --connect-timeout 15 --max-time 120 --retry 2 \
+              "https://raw.githubusercontent.com/$GH_REPO/$EXPECTED_COMMIT/downloads/$name" \
+              --output "$name"
+          done
+          printf '%s\n' \
+            '711482fb50ae4c23e2216b6870b98f9e2729e491d84d03cb5755b3a610e4d57f  sendrepute-campaigns-0.1.32.zip' \
+            '5dfd8aa2be6241ebf93e04be01182c269451d1d30ea19ab15c0077823a64d130  sendrepute-campaigns-0.1.32.tar.gz' \
+            '34afc3233db04ff150e42fc78ecdbfbb913d2d58a3c2ab37162abd0d77a96af8  sendrepute-campaigns-0.1.32-SHA256SUMS' \
+            > expected.sha256
+          sha256sum --check --strict expected.sha256
+          sha256sum --check --strict "$base-SHA256SUMS"
+          validate_tag
+
+          # Uses GitHub's short-lived repository token, not an external credential.
+          # No --clobber: existing assets can never be overwritten by this workflow.
+          gh release upload "$RELEASE_TAG" \
+            "$base.zip" "$base.tar.gz" "$base-SHA256SUMS" --repo "$GH_REPO"
+
+          mkdir remote
+          gh release download "$RELEASE_TAG" --repo "$GH_REPO" --dir remote \
+            --pattern "$base.zip" --pattern "$base.tar.gz" --pattern "$base-SHA256SUMS"
+          (cd remote && sha256sum --check --strict ../expected.sha256 \
+            && sha256sum --check --strict "$base-SHA256SUMS")
+          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > attached.json
+          jq -e '.id == 400520781 and (.assets | length == 3)' attached.json >/dev/null
+          validate_tag
+          printf '%s\n' \
+            'Attached and re-downloaded all three assets; their SHA-256 hashes match the verified immutable downloads.' \
+            'No application source, deployment, customer data, or installation was accessed.' \
+            >> "$GITHUB_STEP_SUMMARY"
