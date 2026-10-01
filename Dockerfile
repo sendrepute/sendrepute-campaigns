@@ -9,6 +9,7 @@ COPY packages/sendrepute-node/package.json packages/sendrepute-node/package.json
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 FROM node:22.14.0-bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends util-linux && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     PORT=8080 \
     CAMPAIGNS_PUBLIC_DIR=/opt/campaigns/public \

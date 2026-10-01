@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import { domainToASCII } from "node:url";
 import { Router } from "express";
 import { createSystemDnsVerifier, isAbsentDnsError, systemDnsVerifier } from "./domain-dns.js";
+import { synchronizeTrackingHttps, trackingHttpsStatus } from "./https-site.js";
 export { systemDnsVerifier } from "./domain-dns.js";
 const VERIFY_PREFIX = "sendrepute-domain-verification=";
 const PIXEL = Buffer.from("R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=", "base64");
@@ -358,10 +359,11 @@ export function createDomainsTrackingRouter(deps) {
         id: row.id, hostname: row.hostname, basePath: row.base_path, verifiedAt: row.verified_at,
         lastCheckedAt: row.last_checked_at, lastError: row.last_error,
         dns: { type: "TXT", name: verificationRecordName(row.hostname), value: verificationRecordValue(row.challenge) },
-        tls: { required: true, configuredByApplication: false },
+        tls: trackingHttpsStatus(row.hostname, row.base_path, !!row.verified_at),
         createdAt: row.created_at, updatedAt: row.updated_at,
     });
     router.get("/domains", deps.need("settings:manage"), deps.wrap(async (request, response) => {
+        await synchronizeTrackingHttps(deps.db);
         const p = deps.page(request);
         const rows = await deps.db.query("SELECT * FROM campaigns.custom_domains ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2", [p.pageSize, p.offset]);
         const count = await deps.db.query("SELECT count(*)::text count FROM campaigns.custom_domains");
@@ -412,11 +414,22 @@ export function createDomainsTrackingRouter(deps) {
         }
         catch (error) {
             const message = error instanceof Error ? error.message.slice(0, 500) : "DNS verification failed";
-            await deps.db.query("UPDATE campaigns.custom_domains SET verified_at=NULL,last_checked_at=$2,last_error=$3,updated_at=$2 WHERE id=$1", [id, now(), message]);
+            await deps.db.query("UPDATE campaigns.custom_domains SET verified_at=NULL,last_checked_at=$2,last_error=$3,updated_at=$2 WHERE id=$1 AND challenge=$4", [id, now(), message, row.challenge]);
             throw error;
         }
         const checked = now();
-        const result = await deps.db.query("UPDATE campaigns.custom_domains SET verified_at=$2,last_checked_at=$2,last_error=NULL,updated_at=$2 WHERE id=$1 RETURNING *", [id, checked]);
+        const result = await deps.db.query(`WITH approved AS (
+        UPDATE campaigns.custom_domains SET verified_at=$2,last_checked_at=$2,last_error=NULL,updated_at=$2
+        WHERE id=$1 AND challenge=$3 RETURNING *
+      ), retained AS (
+        INSERT INTO campaigns.tracking_https_hosts(hostname,base_path)
+        SELECT hostname,base_path FROM approved ON CONFLICT DO NOTHING
+      ) SELECT * FROM approved`, [id, checked, row.challenge]);
+        if (!result.rows[0])
+            throw fail(409, "Domain challenge changed during verification; retry with the current TXT record");
+        // Await staging, but preserve successful DNS approval on partial failure.
+        // Status reports the error explicitly; verification and list refresh retry.
+        await synchronizeTrackingHttps(deps.db, true);
         await deps.audit(request, "domain.verify", "custom_domain", id, { hostname: row.hostname });
         response.json({ data: present(result.rows[0]) });
     }));

@@ -8,7 +8,7 @@ import { Pool } from "pg";
 import { PRODUCTION_API_BASE_URL, PRODUCTION_HOSTED_BUILDER_ORIGIN, SendReputeClient, assertHostedBuilderLaunch, operationCapabilities, } from "@workspace/campaigns-bridge";
 import { createExperimentsRouter } from "./experiments.js";
 import { inspectPrivateSmtp } from "./private-smtp-readiness.js";
-import { configureSite, siteStatus } from "./https-site.js";
+import { configureSite, siteStatus, synchronizeTrackingHttps } from "./https-site.js";
 import { PaidDesigns, paidDesignOperations, paidDesignScope } from "./paid-designs.js";
 import { parseSesSnsWebhook, parseTokenWebhook, verifyProviderEventWebhook, sendMessage, verifyProvider, verificationFailure, } from "@workspace/campaigns-delivery";
 import { appendDeliveryEvent, createDeliveryReliabilityRouter, refreshCampaignDeliveryStatistics, } from "./delivery-reliability.js";
@@ -997,7 +997,7 @@ export function createCampaignsRouter(options = {}) {
         ...(options.verifySesWebhookSignature ? { verifySesWebhookSignature: options.verifySesWebhookSignature } : {}),
         telegramSend: options.telegramSend ?? sendTelegramMessage,
         now: options.now ?? (() => new Date()),
-        ready: migrate(db),
+        ready: migrate(db).then(async () => { await synchronizeTrackingHttps(db); }),
     };
     // A standalone router can be mounted before its first request. Keep the
     // rejected promise observable by request middleware without letting an
@@ -2804,7 +2804,8 @@ export function createCampaignsRouter(options = {}) {
                 ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.socket.remoteAddress ?? "")))
             throw http(403, "Upload certificates over HTTPS or from localhost only");
         await consumePublicBudget(db, "settings:https-site", 10, "1 hour");
-        const state = configureSite({ domain: body.domain, mode: body.mode, certificate: body.certificate, privateKey: body.privateKey });
+        await synchronizeTrackingHttps(db);
+        const state = await configureSite({ domain: body.domain, mode: body.mode, certificate: body.certificate, privateKey: body.privateKey });
         await audit(ctx, request, "settings.https.update", "settings", null, { domain: state.domain, mode: state.mode });
         response.status(202).json({ data: state });
     }));

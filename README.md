@@ -82,16 +82,45 @@ Settings** to `https://YOUR_HOSTNAME/campaigns/`. If using Cloudflare, use
 [migration steps](docs/install.md#migrate-an-installed-public-ip-http-workspace-to-https)
 before changing a live installation.
 
-## Download v0.1.35
+## Download v0.1.36
 
 Administrators can check for stable GitHub releases in Workspace Settings. Official versioned Release archive and SHA-256 checksum attachments are preferred. If those expected attachments are absent, the checker can instead resolve the same stable release tag in the official repository to its immutable commit and validate that commit's bounded `downloads/` checksum manifest. Repository download links are pinned to that commit, not a movable tag or branch. Invalid or duplicate expected attachments never permit this fallback. Settings displays an update notice, download/checksum links and the documented manual server update command for an existing Git clone; it never installs, extracts or executes a download. Back up the installation first, then follow the operator upgrade and restart procedure. Archive installations must follow the separate archive upgrade instructions and verify the downloaded bytes against the checksums. GitHub failures, absent or malformed publication metadata, and unknown installed versions are reported as unavailable, never as up to date. New release archives include their installed version metadata; older installations without this metadata cannot claim to be current. Release publishing and checksums are separate operator steps, not performed by the application.
 
-Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.35/downloads/sendrepute-campaigns-0.1.35.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.35/downloads/sendrepute-campaigns-0.1.35.tar.gz),
-verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.35/downloads/sendrepute-campaigns-0.1.35-SHA256SUMS),
+Prefer a versioned archive? Download the [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.36/downloads/sendrepute-campaigns-0.1.36.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.36/downloads/sendrepute-campaigns-0.1.36.tar.gz),
+verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.36/downloads/sendrepute-campaigns-0.1.36-SHA256SUMS),
 extract, and run `./setup.sh` there. These are repository downloads, **not**
 GitHub Release binary attachments; **Code → Download ZIP** is a different
-snapshot. See the [v0.1.35 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.35).
+snapshot. See the [v0.1.36 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.36).
+
+## Additional tracking hostnames
+
+With the included HTTPS/Caddy installation already running, open **Domains**,
+create a hostname challenge, add its A/AAAA record pointing to this server and
+the exact displayed TXT ownership record, then click **Check DNS and verify**.
+Campaigns automatically adds the verified hostname to the same managed proxy
+and reuses the primary certificate when its SAN covers that hostname, otherwise
+requesting an automatic certificate. Repeat for multiple hostnames; no per-domain
+shell commands or proxy edits are required, and the primary installation
+hostname and certificate settings are unchanged. Choose the desired verified
+hostname independently in each campaign's **Tracking domain** dropdown.
+
+DNS approval, loaded proxy configuration, and working public HTTPS are shown
+separately. Loading a configuration does not prove ACME issuance or public
+reachability. Covered Origin CA names require Cloudflare proxying and are not
+directly browser-trusted. DNS and ports 80/443 must reach the existing proxy; Cloudflare
+must permit ACME and remain **Full (strict)**. External proxies/Tunnels require
+operator configuration. If the managed proxy is not running or the primary
+hostname is missing, additions remain queued until that installation-level
+problem is resolved. No insecure SSL fallback is performed.
+
+Previously approved routes are retained when a selectable domain is deleted
+or its challenge rotated, so delivered links are not silently revoked.
+Keep their DNS and certificate renewal available. Preserve the PostgreSQL
+approval ledger and HTTPS/Caddy volumes during upgrades/backups. Manual-primary
+certificate installations may briefly interrupt connections during a
+controlled Caddy-only update/restart. See the packaged `SMTP-TRACKING.md`
+for status definitions, historic-link retention, and failure/retry boundaries.
 
 ## Update
 
@@ -117,7 +146,8 @@ Preserve the full PostgreSQL database, application data/encryption key,
 private `.env` and HTTPS/Caddy state. Follow the
 [complete Docker backup commands](docs/operations.md#docker-infrastructure-backup),
 then keep encrypted, access-controlled off-host copies. An in-app JSON export
-is not an infrastructure backup.
+is not an infrastructure backup and omits the retained HTTPS approval ledger,
+including approved hostnames whose selectable domain rows were deleted.
 
 For **opt-in scheduled** encrypted off-host backups, use the included
 `backup.sh`, `backup.conf.example` and systemd examples. Nothing is scheduled

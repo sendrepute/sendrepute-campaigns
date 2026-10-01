@@ -417,25 +417,39 @@ Caddy's proxy process (the Campaigns app and database keep running). Check
 HTTPS reachability after every change; if the new proxy configuration cannot
 start, the proxy retries its last working configuration.
 
-For a Cloudflare-proxied hostname, use **Full (strict)** in Cloudflare SSL/TLS,
-not Flexible. Automatic Caddy certificates can provide a publicly trusted
-origin when ACME HTTP/TLS challenges reach the origin; Cloudflare edge TLS is
-managed separately. Or select **Upload Cloudflare Origin CA certificate** and
-upload its matching key. Origin CA is trusted by Cloudflare in Full (strict)
-but **not by browsers connecting directly to the origin**. Keep the DNS record
-proxied in that case. No Cloudflare API token is needed; this does not
-configure Cloudflare or bypass DNS/firewall requirements. Wildcard certificates
-are not issued automatically: these modes configure the single entered host.
+For Cloudflare-proxied hostnames, use **Full (strict)**, never Flexible.
+Automatic Caddy certificates provide public certificate management when ACME
+challenges reach the origin; Cloudflare edge TLS is separate. Alternatively,
+select **Upload Cloudflare Origin CA certificate** and supply its matching key.
+Origin CA requires Cloudflare proxying and is **not directly browser-trusted**.
+Neither choosing this mode nor matching the hostname proves actual Cloudflare
+trust; verify externally. No Cloudflare API token is needed, and DNS/firewall
+requirements still apply. Caddy does not automatically issue wildcard
+certificates; an existing uploaded wildcard or SAN certificate may be reused
+for covered, verified tracking names.
 
-The **Tracking domains** page at `/campaigns/domains` proves DNS ownership of
-separate campaign-link and web-version hostnames. It does **not** issue HTTPS
-certificates for them. Route each such hostname and base path to Campaigns
-through a reverse proxy with its own trusted TLS certificate; the managed
-installation Caddy hostname setting does not configure additional hosts.
+With the included managed HTTPS/Caddy installation already running, the
+**Tracking domains** page at `/campaigns/domains` verifies ownership and
+automatically queues additional hostnames on this same instance. Users add
+public A/AAAA and the displayed TXT, then click **Check DNS and verify**; no
+per-domain shell command or proxy edit is needed. Multiple hosts coexist
+without changing the primary hostname/certificate or existing campaign choices.
+Select the desired verified host independently in each campaign. External
+reverse proxies/Tunnels remain operator-managed and require manual hostname
+routing and HTTPS.
+
+For each verified tracking hostname, Caddy explicitly reuses the primary
+uploaded/Origin CA certificate when its SAN covers that hostname; uncovered
+names use automatic individual certificates. Reuse does not establish browser
+or actual Cloudflare trust. Covered Origin CA names require Cloudflare proxying
+with **Full (strict)** and are not directly browser-trusted. Uploaded certificates
+need replacement before expiry. DNS and ports 80/443 must reach the server;
+allow ACME challenges when automatic certificates are needed.
 
 For a separate subdomain such as `links.example.com`, leave **Base path** at
-`/`. An additional path such as `/tracking/` is only for an explicitly configured
-proxy mapping; entering a path here does not configure that mapping.
+`/`. Managed Caddy automatically maps custom base paths such as `/tracking/`
+to this instance’s public tracking routes. With an external proxy/Tunnel, its
+operator must configure that mapping.
 
 Before clicking **Check DNS and verify**, complete both DNS requirements:
 
@@ -450,20 +464,28 @@ Before clicking **Check DNS and verify**, complete both DNS requirements:
 4. Once DNS is visible publicly, click **Check DNS and verify**. The check
    requires both public address resolution for the bare hostname and the
    matching TXT value. Adding only TXT cannot pass this check.
-5. Configure and test HTTPS and proxy routing to the same Campaigns instance
-   before using the domain for real sends. Select the verified domain in each
-   campaign's **Tracking domain** field; verification does not select it
-   automatically or replace the installation domain.
+5. Verification queues the hostname for managed Caddy to load; it does not mean
+   HTTPS is already working. Test a valid public link before real sends. Choose
+   the verified hostname independently in each campaign’s **Tracking domain**
+   field; verification does not select it automatically or replace the
+   installation domain. External proxy/Tunnel operators must configure and test
+   routing, base paths and HTTPS themselves.
 
-Verification proves DNS ownership, not working TLS or proxy routing. The
-application does not create these DNS records or configure the additional
-proxy hostname for you.
+DNS ownership, Caddy configuration acknowledgement and working public HTTPS
+are separate facts. A loaded configuration is not proof of certificate
+issuance or trust, and SAN coverage alone does not prove browser or Cloudflare
+trust. Campaigns does not create DNS records. If managed Caddy is not running
+or primary HTTPS is not configured, additions remain queued. Deleting a
+selectable domain or rotating its challenge does not remove historical approved
+routes; keep their DNS and certificate renewal available.
 
 Use the **same** `--profile https` option on later Compose upgrades. Caddy
 persists ACME certificate state in `campaigns-caddy-data`; retain that volume
-across upgrades and allow outbound ACME traffic. It forwards **all** requests
-to the private `campaigns:8080` container, including `/campaigns/`,
-`/api/campaigns/`, and root `/public/campaigns/` tracking links. Compose
+across upgrades and allow outbound ACME traffic. The primary Caddy site forwards
+management `/campaigns/`, `/api/campaigns/` and root `/public/campaigns/` routes
+to the private `campaigns:8080` container. Additional tracking sites expose only
+public tracking routes, automatically mapping custom base paths; other paths
+return 404. Compose
 still binds the app's port 8080 to host loopback; PostgreSQL is internal and
 must not be exposed. `CAMPAIGNS_TRUST_PROXY=true` trusts only the immediate
 proxy hop; do not set it when the application is reachable directly from
@@ -492,6 +514,16 @@ prefix on its way to the standalone server.
 The release is JavaScript plus static browser assets, not a compiled
 single-file binary. Install Node.js 22+, PostgreSQL, and the exact production
 dependencies from the archive:
+
+The included Docker runtime installs Linux `flock` (`util-linux`) for
+race-safe managed HTTPS updates. A bare Node.js installation that opts into
+the shared managed-Caddy site directory must also install `util-linux` and
+confirm `command -v flock` succeeds under the Campaigns service account.
+The shared filesystem must support advisory file locking. Do not delete or
+replace `.write-lock`: the kernel releases its lock when the owner exits.
+If locking is unavailable, managed updates report an error rather than
+claiming a hostname is configured. External-proxy installations that do not
+enable the managed site directory do not use this helper.
 
 ```sh
 npm ci --omit=dev --ignore-scripts
