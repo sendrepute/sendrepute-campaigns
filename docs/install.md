@@ -52,9 +52,9 @@ never force-reset private settings or delete volumes.
 
 Alternatively, use a versioned release archive:
 
-Download the [v0.1.31 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.31/downloads/sendrepute-campaigns-0.1.31.zip)
-or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.31/downloads/sendrepute-campaigns-0.1.31.tar.gz)
-and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.31/downloads/sendrepute-campaigns-0.1.31-SHA256SUMS).
+Download the [v0.1.37 ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.37/downloads/sendrepute-campaigns-0.1.37.zip)
+or [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.37/downloads/sendrepute-campaigns-0.1.37.tar.gz)
+and verify it against the [published SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.37/downloads/sendrepute-campaigns-0.1.37-SHA256SUMS).
 These are repository downloads, not GitHub Release binary assets. GitHub's
 **Code → Download ZIP** provides a repository snapshot rather than the
 checksummed runtime release archive. Do not pipe a remote script into a shell.
