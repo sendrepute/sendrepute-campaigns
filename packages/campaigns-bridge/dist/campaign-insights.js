@@ -22,8 +22,10 @@ export function validateInsightQuote(value) {
     const quote = value;
     if (!quote || ![5000, 10000].includes(quote.priceMillicents) || quote.currency !== "USD" ||
         typeof quote.vip !== "boolean" || quote.retentionDays !== 30 ||
-        quote.priceMillicents !== (quote.vip ? 5000 : 10000))
+        (quote.priceMillicents === 5000 && !quote.vip))
         throw new TypeError("Invalid authoritative campaign insight quote");
+    // Membership is access eligibility, not a price formula. Retain legacy VIP
+    // quotes for mixed-version installations; analysis must still forward exact consent.
 }
 export function validateInsightResult(value) {
     const response = value;

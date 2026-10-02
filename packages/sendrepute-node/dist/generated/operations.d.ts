@@ -141,7 +141,7 @@ export type CreditLedgerEntry = {
     balanceCents: number;
     amountMillicents: number;
     balanceMillicents: number;
-    type: "classification" | "domain_ip_scan" | "ai_template" | "email_template_access" | "adjustment" | "bitcoin_deposit" | "bitcoin_reorg_reversal" | "usdt_deposit" | "usdt_reorg_reversal" | "deposit_bonus" | "deposit_bonus_reversal" | "referral_bonus" | "referral_bonus_reversal";
+    type: "classification" | "domain_ip_scan" | "ai_template" | "email_template_access" | "vip_purchase" | "vip_builder" | "vip_native_ai_reserve" | "vip_native_ai_refund" | "campaign_insight" | "campaign_insight_refund" | "adjustment" | "bitcoin_deposit" | "bitcoin_reorg_reversal" | "usdt_deposit" | "usdt_reorg_reversal" | "deposit_bonus" | "deposit_bonus_reversal" | "referral_bonus" | "referral_bonus_reversal";
     description?: unknown;
     createdAt: string;
 };
