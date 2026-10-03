@@ -89,16 +89,16 @@ sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-t
 
 <a id="download-v0141"></a>
 
-## Загрузка v0.1.42
+## Загрузка v0.1.43
 
 Администраторы могут проверять наличие стабильных релизов на GitHub в разделе Workspace Settings. Предпочтительнее использовать официальные версионированные архивы релиза (Release archive) и вложенные контрольные суммы SHA-256. Если ожидаемые вложения отсутствуют, механизм проверки может вместо этого разрешить тот же стабильный тег релиза в официальном репозитории до его неизменяемого коммита и валидировать привязанный к этому коммиту манифест контрольных сумм `downloads/`. Ссылки на скачивание из репозитория жестко привязаны к этому коммиту, а не к перемещаемому тегу или ветке. Недействительные или дублирующиеся ожидаемые вложения никогда не допускают использования этого запасного механизма (fallback). В настройках отображается уведомление об обновлении, ссылки для скачивания/проверки контрольных сумм и задокументированная команда для ручного обновления сервера из существующего Git-клона; система никогда не устанавливает, не извлекает и не выполняет скачанный файл самостоятельно. Сначала сделайте резервную копию, затем выполните процедуру обновления и перезапуска от лица оператора. При установке из архива необходимо следовать отдельным инструкциям по обновлению из архива и сверять байты скачанных файлов с контрольными суммами. Сбои GitHub, отсутствующие или некорректные метаданные публикации, а также неизвестные установленные версии сообщаются как недоступные (unavailable), а не как актуальные (up to date). Архивы новых релизов содержат метаданные об установленной версии; старые установки без таких метаданных не могут заявлять о своей актуальности. Публикация релиза и генерация контрольных сумм — это отдельные действия оператора, не выполняемые приложением.
 
-Предпочитаете версионированный архив? Скачайте [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
-или [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz),
-проверьте [контрольные суммы SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS),
+Предпочитаете версионированный архив? Скачайте [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.zip)
+или [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.tar.gz),
+проверьте [контрольные суммы SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.43/downloads/sendrepute-campaigns-0.1.43-SHA256SUMS),
 распакуйте и выполните там `./setup.sh`. Это скачивания напрямую из репозитория, а **не**
 бинарные вложения из GitHub Release; опция **Code → Download ZIP** выдает другой
-снапшот. См. [примечания к релизу v0.1.42](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42).
+снапшот. См. [примечания к релизу v0.1.43](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.43).
 
 <a id="additional-tracking-hostnames"></a>
 

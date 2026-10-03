@@ -77,16 +77,16 @@ göz atın.
 
 <a id="download-v0141"></a>
 
-## v0.1.42'i İndir
+## v0.1.43'i İndir
 
 Yöneticiler, **Workspace Settings** üzerinden kararlı GitHub sürümlerini kontrol edebilir. Resmî sürümlendirilmiş Release (Yayın) arşivi ve SHA-256 sağlama toplamı (checksum) ekleri tercih edilir. Beklenen bu ekler yoksa, denetleyici bunun yerine resmî depodaki aynı kararlı sürüm etiketini, o etiketin değiştirilemez commit'ine çözümleyebilir ve bu commit'e bağlı `downloads/` sağlama toplamı bildirimini (manifest) doğrulayabilir. Depo indirme bağlantıları, yeri değiştirilebilir bir etikete veya dala (branch) değil, doğrudan o commit'e sabitlenir. Beklenen eklerin geçersiz veya yinelenen (duplicate) olması durumunda bu geri dönüş (fallback) yöntemine asla izin verilmez. Ayarlar bölümünde bir güncelleme bildirimi, indirme/sağlama toplamı bağlantıları ve mevcut bir Git klonu için belgelenmiş manuel sunucu güncelleme komutu görüntülenir; indirilen bir dosyayı asla yüklemez, çıkartmaz (extract) veya çalıştırmaz. Önce kurulumu yedekleyin, ardından operatör yükseltme ve yeniden başlatma prosedürünü izleyin. Arşiv kurulumları, ayrı olarak sağlanan arşiv yükseltme talimatlarını takip etmeli ve indirilen baytları sağlama toplamlarıyla doğrulamalıdır. GitHub hataları, eksik veya hatalı biçimlendirilmiş yayın (publication) meta verileri ve bilinmeyen kurulu sürümler hiçbir zaman güncel olarak değil, kullanılamıyor olarak raporlanır. Yeni sürüm arşivleri kendi kurulu sürüm meta verilerini içerir; bu meta veriye sahip olmayan eski kurulumlar güncel olduklarını iddia edemez. Sürüm yayınlama ve sağlama toplamları, uygulama tarafından gerçekleştirilmeyen, ayrı operatör adımlarıdır.
 
-Sürümlendirilmiş bir arşivi mi tercih ediyorsunuz? [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
-veya [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz) dosyasını indirin,
-[SHA-256 sağlama toplamlarını (checksums)](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS) doğrulayın,
+Sürümlendirilmiş bir arşivi mi tercih ediyorsunuz? [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.zip)
+veya [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.tar.gz) dosyasını indirin,
+[SHA-256 sağlama toplamlarını (checksums)](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.43/downloads/sendrepute-campaigns-0.1.43-SHA256SUMS) doğrulayın,
 dosyaları çıkartın ve orada `./setup.sh` komutunu çalıştırın. Bunlar depo indirmeleridir, **kesinlikle**
 GitHub Release ikili (binary) ekleri değildir; **Code → Download ZIP** ile alınan dosya farklı bir
-anlık görüntüdür (snapshot). [v0.1.42 sürüm notlarına](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42) göz atın.
+anlık görüntüdür (snapshot). [v0.1.43 sürüm notlarına](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.43) göz atın.
 
 <a id="additional-tracking-hostnames"></a>
 

@@ -92,16 +92,16 @@ sebelum mengubah instalasi aktif (live).
 
 <a id="download-v0141"></a>
 
-## Unduh v0.1.42
+## Unduh v0.1.43
 
 Administrator dapat memeriksa rilis GitHub stabil di Workspace Settings. Lampiran arsip Rilis resmi yang berversi dan checksum SHA-256 lebih diutamakan. Jika lampiran yang diharapkan tersebut tidak ada, pemeriksa dapat mengurai (resolve) tag rilis stabil yang sama di repositori resmi ke commit-nya yang tidak dapat diubah (immutable), lalu memvalidasi manifes checksum `downloads/` yang terikat pada commit tersebut. Tautan unduhan repositori disematkan pada commit tersebut, bukan pada tag atau branch yang dapat dipindah (movable). Lampiran yang diharapkan namun tidak valid atau ganda sama sekali tidak mengizinkan fallback ini. Pengaturan (Settings) menampilkan pemberitahuan pembaruan, tautan unduhan/checksum, dan perintah manual pembaruan server yang terdokumentasi untuk klon Git yang ada; sistem tidak pernah menginstal, mengekstrak, atau mengeksekusi unduhan. Lakukan backup instalasi terlebih dahulu, kemudian ikuti prosedur upgrade dan restart oleh operator. Instalasi arsip harus mengikuti instruksi upgrade arsip yang terpisah dan memverifikasi byte yang diunduh dengan checksum. Kegagalan GitHub, metadata publikasi yang tidak ada atau salah format, serta versi terinstal yang tidak diketahui akan dilaporkan sebagai tidak tersedia, dan tidak pernah dilaporkan sebagai versi terbaru (up to date). Arsip rilis baru menyertakan metadata versi terinstalnya; instalasi versi lama tanpa metadata ini tidak dapat mengklaim sebagai versi saat ini (current). Penerbitan rilis dan checksum adalah langkah operator yang terpisah, tidak dilakukan oleh aplikasi.
 
-Lebih memilih arsip berversi? Unduh [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
-atau [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz),
-verifikasi [checksum SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS),
+Lebih memilih arsip berversi? Unduh [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.zip)
+atau [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.tar.gz),
+verifikasi [checksum SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.43/downloads/sendrepute-campaigns-0.1.43-SHA256SUMS),
 ekstrak, dan jalankan `./setup.sh` di sana. Ini merupakan unduhan repositori, **bukan**
 lampiran biner GitHub Release; **Code → Download ZIP** adalah snapshot yang
-berbeda. Lihat [catatan rilis v0.1.42](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42).
+berbeda. Lihat [catatan rilis v0.1.43](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.43).
 
 <a id="additional-tracking-hostnames"></a>
 

@@ -1,1 +1,0 @@
-import{j as o}from"./email-hygiene-rules-CWP_Tbo6.js";import{a0 as s}from"./App-DASANBu-.js";function a({className:r,...e}){return o.jsx("div",{"aria-hidden":"true",className:s("sr-skeleton rounded-md",r),...e})}export{a as S};
