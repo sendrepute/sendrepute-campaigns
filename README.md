@@ -1,3 +1,5 @@
+[English](README.md) · [العربية](README.ar.md) · [Français](README.fr.md) · [Русский](README.ru.md) · [Українська](README.uk.md) · [हिन्दी](README.hi.md) · [Deutsch](README.de.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md) · [Bahasa Indonesia](README.id.md) · [Türkçe](README.tr.md) · [简体中文](README.zh.md) · [Tiếng Việt](README.vi.md)
+
 # SendRepute Campaigns
 
 Self-hosted audiences, campaigns, templates, automations and delivery from your
@@ -8,6 +10,8 @@ source monorepo.
 
 Try the [interactive demo](https://www.sendrepute.com/campaigns/?demo=true)
 (no real messages, hosted builders or paid results).
+
+<a id="quickstart-fresh-ubuntu-24042604"></a>
 
 ## Quickstart: fresh Ubuntu 24.04/26.04
 
@@ -47,6 +51,8 @@ then complete SendRepute activation and owner setup in the wizard. Setup does
 the token, `.env` and logs private. An already installed workspace does not
 need another setup token.
 
+<a id="choose-access"></a>
+
 ## Choose access
 
 - **HTTPS domain (recommended):** setup starts the included Caddy proxy.
@@ -63,6 +69,8 @@ need another setup token.
 
 See the [setup command cookbook](docs/install.md#guided-setup-command-cookbook)
 for exact commands, options, local SSH tunneling, diagnostics and warnings.
+
+<a id="moving-from-http-to-https"></a>
 
 ## Moving from HTTP to HTTPS
 
@@ -82,6 +90,8 @@ Settings** to `https://YOUR_HOSTNAME/campaigns/`. If using Cloudflare, use
 [migration steps](docs/install.md#migrate-an-installed-public-ip-http-workspace-to-https)
 before changing a live installation.
 
+<a id="download-v0141"></a>
+
 ## Download v0.1.41
 
 Administrators can check for stable GitHub releases in Workspace Settings. Official versioned Release archive and SHA-256 checksum attachments are preferred. If those expected attachments are absent, the checker can instead resolve the same stable release tag in the official repository to its immutable commit and validate that commit's bounded `downloads/` checksum manifest. Repository download links are pinned to that commit, not a movable tag or branch. Invalid or duplicate expected attachments never permit this fallback. Settings displays an update notice, download/checksum links and the documented manual server update command for an existing Git clone; it never installs, extracts or executes a download. Back up the installation first, then follow the operator upgrade and restart procedure. Archive installations must follow the separate archive upgrade instructions and verify the downloaded bytes against the checksums. GitHub failures, absent or malformed publication metadata, and unknown installed versions are reported as unavailable, never as up to date. New release archives include their installed version metadata; older installations without this metadata cannot claim to be current. Release publishing and checksums are separate operator steps, not performed by the application.
@@ -92,6 +102,8 @@ verify the [SHA-256 checksums](https://github.com/sendrepute/sendrepute-campaign
 extract, and run `./setup.sh` there. These are repository downloads, **not**
 GitHub Release binary attachments; **Code → Download ZIP** is a different
 snapshot. See the [v0.1.41 release notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.41).
+
+<a id="additional-tracking-hostnames"></a>
 
 ## Additional tracking hostnames
 
@@ -122,6 +134,8 @@ certificate installations may briefly interrupt connections during a
 controlled Caddy-only update/restart. See the packaged `SMTP-TRACKING.md`
 for status definitions, historic-link retention, and failure/retry boundaries.
 
+<a id="update"></a>
+
 ## Update
 
 Back up first; see [Back up](#back-up).
@@ -139,6 +153,8 @@ project, PostgreSQL and application volumes, and encryption key. Never run
 `docker compose down -v` against real data. For archive upgrades, use the
 [upgrade instructions](docs/operations.md#upgrade), not a new clone over the
 installation.
+
+<a id="back-up"></a>
 
 ## Back up
 
@@ -166,6 +182,8 @@ the operator-owned private config and local spool/status file are intact.
 `./backup.sh verify /private/path/archive.tar.age` checks decrypt, manifest and
 PostgreSQL format without restoring data.
 
+<a id="restore"></a>
+
 ## Restore
 
 Restore only from a verified, matching PostgreSQL **and** data-volume backup;
@@ -173,6 +191,8 @@ the in-app JSON export omits delivery jobs, audit events and other runtime
 state. Restoring can overwrite newer data or resume queued mail. Follow the
 [isolated restore steps](docs/operations.md#restore-to-an-empty-isolated-installation)
 before any production cutover.
+
+<a id="more-information"></a>
 
 ## More information
 
@@ -189,6 +209,8 @@ and classification require their own entitlement or credit and explicit price
 consent; demo AI does not perform paid results. Delivery goes from **your
 server to your configured SMTP relay/provider**, not a central SendRepute
 SMTP proxy.
+
+<a id="release-boundary"></a>
 
 ## Release boundary
 
