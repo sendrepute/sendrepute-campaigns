@@ -4,7 +4,7 @@
 
 अपने स्वयं के सर्वर से सेल्फ-होस्टेड ऑडियंस, कैंपेन, टेम्प्लेट, ऑटोमेशन और डिलीवरी। यह रिपॉजिटरी **compiled runtime** वितरित करती है, न कि संपूर्ण सोर्स मोनोरीपो (source monorepo)।
 
-![SendRepute Campaigns डेस्कटॉप प्रीव्यू](docs/assets/campaigns-github-desktop.jpg)
+![SendRepute Campaigns डेस्कटॉप प्रीव्यू](docs/assets/campaigns-github-desktop-hi.jpg)
 
 [इंटरैक्टिव डेमो](https://www.sendrepute.com/campaigns/?demo=true) आज़माएं
 (इसमें कोई वास्तविक संदेश, होस्टेड बिल्डर या सशुल्क परिणाम शामिल नहीं हैं)।

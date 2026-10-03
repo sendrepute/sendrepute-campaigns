@@ -6,7 +6,7 @@
 вашего сервера. В этом репозитории распространяется **скомпилированная среда выполнения**, а не полный
 исходный код монорепозитория.
 
-![SendRepute Campaigns desktop preview](docs/assets/campaigns-github-desktop.jpg)
+![SendRepute Campaigns desktop preview](docs/assets/campaigns-github-desktop-ru.jpg)
 
 Попробуйте [интерактивное демо](https://www.sendrepute.com/campaigns/?demo=true)
 (без реальных сообщений, облачных конструкторов и платных результатов).

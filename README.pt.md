@@ -6,7 +6,7 @@ Públicos, campanhas, modelos, automações e entrega auto-hospedados a partir d
 servidor. Este repositório distribui o **runtime compilado**, não o monorepo completo
 do código-fonte.
 
-![Prévia no desktop do SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![Prévia no desktop do SendRepute Campaigns](docs/assets/campaigns-github-desktop-pt.jpg)
 
 Experimente a [demonstração interativa](https://www.sendrepute.com/campaigns/?demo=true)
 (sem mensagens reais, construtores hospedados ou resultados pagos).

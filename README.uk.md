@@ -6,7 +6,7 @@
 вашого власного сервера. Цей репозиторій поширює **скомпільоване середовище виконання**, а не повний
 вихідний код монорепозиторію.
 
-![Попередній перегляд десктопної версії SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![Попередній перегляд десктопної версії SendRepute Campaigns](docs/assets/campaigns-github-desktop-uk.jpg)
 
 Спробуйте [інтерактивне демо](https://www.sendrepute.com/campaigns/?demo=true)
 (без реальних повідомлень, хмарних конструкторів чи платних результатів).

@@ -6,7 +6,7 @@ Selbst gehostete Zielgruppen, Kampagnen, Vorlagen, Automatisierungen und Zustell
 eigenen Server. Dieses Repository stellt die **kompilierte Laufzeitumgebung** bereit, nicht das vollständige
 Quellcode-Monorepo.
 
-![SendRepute Campaigns Desktop-Vorschau](docs/assets/campaigns-github-desktop.jpg)
+![SendRepute Campaigns Desktop-Vorschau](docs/assets/campaigns-github-desktop-de.jpg)
 
 Probieren Sie die [interaktive Demo](https://www.sendrepute.com/campaigns/?demo=true) aus
 (keine echten Nachrichten, keine gehosteten Builder oder kostenpflichtigen Ergebnisse).

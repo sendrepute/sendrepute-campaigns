@@ -4,7 +4,7 @@
 
 Kendi sunucunuzda barındırabileceğiniz hedef kitleler, kampanyalar, şablonlar, otomasyonlar ve teslimat. Bu depo tam kaynak kodlu monorepo'yu değil, **derlenmiş çalışma zamanını** dağıtır.
 
-![SendRepute Campaigns masaüstü önizlemesi](docs/assets/campaigns-github-desktop.jpg)
+![SendRepute Campaigns masaüstü önizlemesi](docs/assets/campaigns-github-desktop-tr.jpg)
 
 [Etkileşimli demoyu](https://www.sendrepute.com/campaigns/?demo=true) deneyin
 (gerçek mesajlar, barındırılan oluşturucular veya ücretli sonuçlar içermez).

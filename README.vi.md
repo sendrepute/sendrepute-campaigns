@@ -6,7 +6,7 @@ Tự lưu trữ các tập khách hàng, chiến dịch, mẫu, tự động hó
 máy chủ của bạn. Kho lưu trữ này phân phối **bản runtime đã được biên dịch**, không phải toàn bộ
 mã nguồn monorepo.
 
-![Ảnh xem trước giao diện máy tính của SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![Ảnh xem trước giao diện máy tính của SendRepute Campaigns](docs/assets/campaigns-github-desktop-vi.jpg)
 
 Dùng thử [bản demo tương tác](https://www.sendrepute.com/campaigns/?demo=true)
 (không có tin nhắn thực tế, trình thiết kế được lưu trữ hay kết quả tính phí).

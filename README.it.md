@@ -4,7 +4,7 @@
 
 Pubblico, campagne, template, automazioni e consegna in self-hosting direttamente dal tuo server. Questo repository distribuisce il **runtime compilato**, non l'intero monorepo dei sorgenti.
 
-![Anteprima desktop di SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![Anteprima desktop di SendRepute Campaigns](docs/assets/campaigns-github-desktop-it.jpg)
 
 Prova la [demo interattiva](https://www.sendrepute.com/campaigns/?demo=true)
 (nessun messaggio reale, builder in hosting o risultati a pagamento).

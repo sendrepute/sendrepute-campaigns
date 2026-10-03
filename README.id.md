@@ -6,7 +6,7 @@ Jalankan audiens, kampanye, templat, otomatisasi, dan pengiriman secara mandiri 
 server Anda. Repositori ini mendistribusikan **runtime yang dikompilasi**, bukan
 keseluruhan monorepo sumber.
 
-![Pratinjau desktop SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![Pratinjau desktop SendRepute Campaigns](docs/assets/campaigns-github-desktop-id.jpg)
 
 Coba [demo interaktif](https://www.sendrepute.com/campaigns/?demo=true)
 (tanpa pesan nyata, builder yang di-host, maupun hasil berbayar).

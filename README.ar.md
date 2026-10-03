@@ -6,7 +6,7 @@
 خادمك الخاص. يوفر هذا المستودع **بيئة التشغيل المُجمَّعة**، وليس
 المستودع الموحد (monorepo) للشيفرة المصدرية الكاملة.
 
-![معاينة سطح المكتب لـ SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![معاينة سطح المكتب لـ SendRepute Campaigns](docs/assets/campaigns-github-desktop-ar.jpg)
 
 جرّب [العرض التوضيحي التفاعلي](https://www.sendrepute.com/campaigns/?demo=true)
 (بدون رسائل حقيقية أو أدوات بناء مستضافة أو نتائج مدفوعة).

@@ -4,7 +4,7 @@
 
 Audiencias, campañas, plantillas, automatizaciones y envíos autoalojados desde su propio servidor. Este repositorio distribuye el **entorno de ejecución compilado**, no el monorepositorio completo del código fuente.
 
-![Vista previa de escritorio de SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![Vista previa de escritorio de SendRepute Campaigns](docs/assets/campaigns-github-desktop-es.jpg)
 
 Pruebe la [demostración interactiva](https://www.sendrepute.com/campaigns/?demo=true)
 (sin mensajes reales, constructores alojados ni resultados de pago).

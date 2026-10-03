@@ -4,7 +4,7 @@
 
 在您自己的服务器上自托管受众、营销活动、模板、自动化以及邮件投递。此仓库分发的是**编译后的运行时**，而不是完整的源代码单体仓库（monorepo）。
 
-![SendRepute Campaigns 桌面预览](docs/assets/campaigns-github-desktop.jpg)
+![SendRepute Campaigns 桌面预览](docs/assets/campaigns-github-desktop-zh.jpg)
 
 欢迎体验[交互式演示](https://www.sendrepute.com/campaigns/?demo=true)
 （不包含真实消息、托管式构建器或付费结果）。

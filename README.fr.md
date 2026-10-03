@@ -6,7 +6,7 @@ Audiences, campagnes, modèles, automatisations et envois auto-hébergés depuis
 propre serveur. Ce dépôt distribue l'**environnement d'exécution compilé**, et non le
 monorepo complet du code source.
 
-![Aperçu de bureau de SendRepute Campaigns](docs/assets/campaigns-github-desktop.jpg)
+![Aperçu de bureau de SendRepute Campaigns](docs/assets/campaigns-github-desktop-fr.jpg)
 
 Essayez la [démo interactive](https://www.sendrepute.com/campaigns/?demo=true)
 (sans messages réels, constructeurs hébergés ni résultats payants).
