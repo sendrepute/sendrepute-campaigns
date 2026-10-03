@@ -92,16 +92,16 @@ bevor Sie Änderungen an einer Live-Installation vornehmen.
 
 <a id="download-v0141"></a>
 
-## Download v0.1.41
+## Download v0.1.42
 
 Administratoren können in den Workspace Settings nach stabilen GitHub-Releases suchen. Offizielle, versionierte Release-Archive und SHA-256-Prüfsummen als Anhänge werden bevorzugt. Sollten diese erwarteten Anhänge fehlen, kann die Update-Prüfung stattdessen denselben stabilen Release-Tag im offiziellen Repository auf dessen unveränderlichen Commit auflösen und das daran gebundene `downloads/`-Prüfsummen-Manifest validieren. Download-Links aus dem Repository sind stets an diesen Commit gebunden, nicht an einen verschiebbaren Tag oder Branch. Ungültige oder doppelt vorhandene erwartete Anhänge lassen diesen Fallback niemals zu. Die Settings zeigen einen Update-Hinweis, Download- und Prüfsummen-Links sowie den dokumentierten Befehl für ein manuelles Server-Update eines bestehenden Git-Klons an. Die Anwendung wird niemals selbstständig einen Download installieren, entpacken oder ausführen. Erstellen Sie zunächst ein Backup der Installation und folgen Sie anschließend dem Upgrade- und Neustart-Prozess für Betreiber. Bei Archiv-Installationen müssen die separaten Anweisungen für Archiv-Upgrades befolgt und die heruntergeladenen Bytes anhand der Prüfsummen verifiziert werden. GitHub-Fehler, fehlende oder fehlerhafte Veröffentlichungs-Metadaten sowie unbekannte installierte Versionen werden als nicht verfügbar gemeldet, niemals als aktuell. Neue Release-Archive enthalten die Metadaten ihrer installierten Version; ältere Installationen ohne diese Metadaten können nicht als aktuell gelten. Die Veröffentlichung von Releases und die Erstellung von Prüfsummen sind separate Betreiberschritte und werden nicht von der Anwendung durchgeführt.
 
-Bevorzugen Sie ein versioniertes Archiv? Laden Sie die [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.zip)
-oder [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.tar.gz) herunter,
-verifizieren Sie die [SHA-256-Prüfsummen](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.41/downloads/sendrepute-campaigns-0.1.41-SHA256SUMS),
+Bevorzugen Sie ein versioniertes Archiv? Laden Sie die [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
+oder [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz) herunter,
+verifizieren Sie die [SHA-256-Prüfsummen](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS),
 entpacken Sie das Archiv und führen Sie dort `./setup.sh` aus. Es handelt sich hierbei um Repository-Downloads, **nicht**
 um binäre GitHub-Release-Anhänge; **Code → Download ZIP** ist ein anderer
-Snapshot. Beachten Sie die [v0.1.41 Release Notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.41).
+Snapshot. Beachten Sie die [v0.1.42 Release Notes](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42).
 
 <a id="additional-tracking-hostnames"></a>
 

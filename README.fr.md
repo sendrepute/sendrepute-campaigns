@@ -92,16 +92,16 @@ avant de modifier une installation en production.
 
 <a id="download-v0141"></a>
 
-## Téléchargement de la v0.1.41
+## Téléchargement de la v0.1.42
 
 Les administrateurs peuvent vérifier la disponibilité des versions stables GitHub dans Workspace Settings. Les archives officielles de Release versionnées et les pièces jointes de sommes de contrôle SHA-256 sont privilégiées. Si ces pièces jointes attendues sont absentes, le vérificateur peut à la place résoudre le même tag de version stable dans le dépôt officiel vers son commit immuable et valider le manifeste de sommes de contrôle `downloads/` lié à ce commit. Les liens de téléchargement du dépôt sont épinglés à ce commit, et non à un tag ou une branche mobile. Des pièces jointes attendues invalides ou en double ne permettent jamais cette solution de repli. Les paramètres affichent une notification de mise à jour, les liens de téléchargement/sommes de contrôle et la commande manuelle documentée de mise à jour du serveur pour un clone Git existant ; ils n'installent, n'extraient ni n'exécutent jamais un téléchargement. Sauvegardez d'abord l'installation, puis suivez la procédure de mise à niveau et de redémarrage de l'opérateur. Les installations à partir d'archives doivent suivre les instructions distinctes de mise à niveau par archive et vérifier les octets téléchargés avec les sommes de contrôle. Les défaillances de GitHub, les métadonnées de publication absentes ou mal formées, et les versions installées inconnues sont signalées comme indisponibles, jamais comme à jour. Les nouvelles archives de Release incluent les métadonnées de leur version installée ; les installations plus anciennes dépourvues de ces métadonnées ne peuvent pas prétendre être à jour. La publication des versions et les sommes de contrôle sont des étapes distinctes de l'opérateur, non effectuées par l'application.
 
-Vous préférez une archive versionnée ? Téléchargez le [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.zip)
-ou le [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.tar.gz),
-vérifiez les [sommes de contrôle SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.41/downloads/sendrepute-campaigns-0.1.41-SHA256SUMS),
+Vous préférez une archive versionnée ? Téléchargez le [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
+ou le [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz),
+vérifiez les [sommes de contrôle SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS),
 extrayez le contenu, et exécutez-y `./setup.sh`. Il s'agit de téléchargements du dépôt, et **non**
 de pièces jointes binaires GitHub Release ; **Code → Download ZIP** est un instantané
-différent. Consultez les [notes de version de la v0.1.41](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.41).
+différent. Consultez les [notes de version de la v0.1.42](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42).
 
 <a id="additional-tracking-hostnames"></a>
 

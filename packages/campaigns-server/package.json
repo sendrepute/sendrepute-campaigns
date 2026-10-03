@@ -17,6 +17,8 @@
   "files": [
     "dist",
     "migrations",
+    "data",
+    "EMAIL-HYGIENE.md",
     "BACKUP.md",
     "SUBSCRIBER-IDENTITY.md",
     "review-subscriber-identities.mjs",

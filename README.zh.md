@@ -69,16 +69,16 @@ Settings** 中将该 URL 更改为 `https://YOUR_HOSTNAME/campaigns/`。如果�
 
 <a id="download-v0141"></a>
 
-## 下载 v0.1.41
+## 下载 v0.1.42
 
 管理员可以在 Workspace Settings 中检查稳定的 GitHub 发布版本。推荐使用官方带版本号的 Release 压缩包及 SHA-256 校验和附件。如果缺失这些预期的附件，检查器可以转而在官方仓库中，将相同的稳定发布标签解析为其不可变的 commit，并验证该 commit 绑定的 `downloads/` 校验和清单。仓库下载链接将固定到该 commit，而不是可变动的标签或分支。如果预期附件无效或重复，则绝不会触发此回退机制。针对现有的 Git 克隆，设置界面会显示更新通知、下载/校验和链接以及已在文档中说明的手动服务器更新命令；它绝不会自动安装、解压或执行下载。请务必先备份现有安装，然后按照运维升级和重启流程进行操作。压缩包安装方式必须遵循单独的压缩包升级说明，并根据校验和验证下载的字节内容。GitHub 故障、发布元数据缺失或格式错误以及安装版本未知等情况，均会报告为不可用，绝不会显示为已是最新版本。新版 Release 压缩包内包含其安装版本元数据；没有此元数据的旧版安装将无法声称为最新。Release 发布和校验和生成是独立的运维步骤，由应用程序以外的流程执行。
 
-更倾向于使用带版本号的压缩包？请下载 [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.zip)
-或 [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.tar.gz)，
-验证 [SHA-256 校验和](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.41/downloads/sendrepute-campaigns-0.1.41-SHA256SUMS)，
+更倾向于使用带版本号的压缩包？请下载 [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
+或 [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz)，
+验证 [SHA-256 校验和](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS)，
 解压并在该目录下运行 `./setup.sh`。这些是仓库下载，**不是**
 GitHub Release 二进制附件；**Code → Download ZIP** 获取到的是不同的
-快照。请参阅 [v0.1.41 发行说明](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.41)。
+快照。请参阅 [v0.1.42 发行说明](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42)。
 
 <a id="additional-tracking-hostnames"></a>
 

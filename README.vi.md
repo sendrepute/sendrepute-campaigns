@@ -91,16 +91,16 @@ trước khi thay đổi một bản cài đặt đang chạy thực tế.
 
 <a id="download-v0141"></a>
 
-## Tải về v0.1.41
+## Tải về v0.1.42
 
 Quản trị viên có thể kiểm tra các bản phát hành (release) ổn định trên GitHub trong Workspace Settings. Ưu tiên các tệp đính kèm tệp nén (archive) phát hành có phiên bản chính thức và mã băm SHA-256. Nếu thiếu các tệp đính kèm dự kiến đó, trình kiểm tra có thể thay vào đó phân giải cùng tag của bản phát hành ổn định trong kho lưu trữ chính thức về commit bất biến của nó và xác thực tệp kê khai mã băm `downloads/` được liên kết với commit đó. Các liên kết tải về từ kho lưu trữ được gắn chặt vào commit đó, không phải vào một tag hay nhánh (branch) có thể di chuyển. Các tệp đính kèm dự kiến không hợp lệ hoặc trùng lặp sẽ tuyệt đối không cho phép sử dụng cơ chế dự phòng này. Settings hiển thị thông báo cập nhật, các liên kết tải về/mã băm và lệnh cập nhật máy chủ thủ công đã được ghi tài liệu cho bản Git clone hiện tại; nó không bao giờ tự động cài đặt, giải nén hay thực thi tệp tải về. Hãy sao lưu bản cài đặt trước, sau đó thực hiện quy trình nâng cấp và khởi động lại dành cho người vận hành. Các bản cài đặt từ tệp nén phải tuân theo các hướng dẫn nâng cấp tệp nén riêng biệt và xác minh các byte tải về so với các mã băm. Các lỗi của GitHub, siêu dữ liệu công bố bị thiếu hoặc sai định dạng, và các phiên bản cài đặt không xác định sẽ được báo cáo là không khả dụng, tuyệt đối không báo cáo là đã cập nhật. Các tệp nén của bản phát hành mới có chứa siêu dữ liệu phiên bản cài đặt của chúng; những bản cài đặt cũ không có siêu dữ liệu này không thể khẳng định là bản hiện tại. Việc xuất bản các bản phát hành và tạo mã băm là các bước thực hiện riêng biệt của người vận hành, không do ứng dụng thực hiện.
 
-Bạn thích tệp nén theo phiên bản hơn? Hãy tải về [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.zip)
-hoặc [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.tar.gz),
-xác minh [các mã băm SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.41/downloads/sendrepute-campaigns-0.1.41-SHA256SUMS),
+Bạn thích tệp nén theo phiên bản hơn? Hãy tải về [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
+hoặc [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz),
+xác minh [các mã băm SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS),
 giải nén, và chạy `./setup.sh` tại đó. Đây là các tệp tải về từ kho lưu trữ, **không phải**
 các tệp đính kèm nhị phân của GitHub Release; **Code → Download ZIP** là một snapshot
-khác hoàn toàn. Xem [ghi chú phát hành v0.1.41](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.41).
+khác hoàn toàn. Xem [ghi chú phát hành v0.1.42](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42).
 
 <a id="additional-tracking-hostnames"></a>
 

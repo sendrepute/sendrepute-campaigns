@@ -22,6 +22,9 @@ import { campaignClickDestinations, rewriteCampaignClickAnchors, createCampaignT
 import { listPublicDomain, recipientPublicList, selectBaseUrl } from "./domains-tracking.js";
 import { createProviderAnalyticsRouter, ingestProviderAnalyticsWebhook } from "./provider-analytics.js";
 import { publicSubscriptionFailure } from "./public-subscription-errors.js";
+import { checkEmailBasic } from "./email-hygiene.js";
+import { advanceEmailHygiene, createEmailHygieneRouter } from "./email-hygiene-operations.js";
+import { disposableSource } from "./disposable-source.js";
 export * from "./delivery-contract.generated.js";
 export { enqueueCampaignNotification, runTelegramNotificationWorker, sendTelegramMessage, } from "./telegram-notifications.js";
 import { createAutomationsRouter, advanceAutomations } from "./automations.js";
@@ -227,6 +230,12 @@ function email(value) {
     if (result.length > 320 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(result))
         throw http(400, "Invalid email address");
     return result;
+}
+function subscriberEmail(value) {
+    const address = email(value);
+    if (checkEmailBasic(address).status === "invalid")
+        throw http(400, "Invalid email address");
+    return address;
 }
 function requireCampaignSender(campaign) {
     if (typeof campaign.fromName !== "string" || !campaign.fromName.trim()
@@ -909,7 +918,7 @@ function normalizedWebhookEvents(provider, payload) {
         return { key: hash(JSON.stringify(item)), type, ...(normalizedEmail ? { email: normalizedEmail } : {}), ...(messageId ? { messageId } : {}), ...(occurredAt ? { occurredAt } : {}) };
     });
 }
-function normalize(kind, input, existing) {
+function normalizeEntity(kind, input, existing, disposableDomains) {
     const now = new Date().toISOString();
     const base = existing ?? { id: randomUUID(), createdAt: now };
     if (kind === "lists") {
@@ -918,7 +927,8 @@ function normalize(kind, input, existing) {
     }
     if (kind === "subscribers") {
         fields(input, ["email", "firstName", "lastName", "status", "listIds", "tags", "metadata", "scope"], existing ? [] : ["email", "listIds", "scope"]);
-        return { ...base, ...input, email: input.email === undefined ? existing?.email : email(input.email), status: input.status ?? existing?.status ?? "subscribed", listIds: input.listIds ?? existing?.listIds, tags: input.tags === undefined ? existing?.tags ?? [] : subscriberTags(input.tags), confirmedAt: existing?.confirmedAt ?? (input.status === "pending" ? null : now), unsubscribedAt: input.status === "unsubscribed" ? now : existing?.unsubscribedAt ?? null, updatedAt: now };
+        const address = input.email === undefined ? existing?.email : subscriberEmail(input.email);
+        return { ...base, ...input, email: address, emailHygiene: checkEmailBasic(address, new Date(now), disposableDomains), status: input.status ?? existing?.status ?? "subscribed", listIds: input.listIds ?? existing?.listIds, tags: input.tags === undefined ? existing?.tags ?? [] : subscriberTags(input.tags), confirmedAt: existing?.confirmedAt ?? (input.status === "pending" ? null : now), unsubscribedAt: input.status === "unsubscribed" ? now : existing?.unsubscribedAt ?? null, updatedAt: now };
     }
     if (kind === "campaigns") {
         fields(input, ["name", "subject", "previewText", "fromName", "fromEmail", "replyTo", "listIds", "segmentIds", "excludeListIds", "excludeSegmentIds", "brandId", "mergeMissingPolicy", "templateId", "providerId", "sendConcurrency", "metadata"], existing ? [] : ["name", "subject", "fromName", "fromEmail", "templateId", "providerId"]);
@@ -982,6 +992,8 @@ async function listRows(ctx, table, request) {
 export function createCampaignsRouter(options = {}) {
     const insecureHttpOrigin = validatedInsecureHttpOrigin(options.insecureHttpOrigin ?? process.env.CAMPAIGNS_INSECURE_HTTP_ORIGIN);
     const db = options.pool ?? new Pool({ connectionString: options.databaseUrl ?? campaignsDatabaseUrl(), max: 10 });
+    const disposable = disposableSource(db);
+    const normalize = (kind, input, existing) => normalizeEntity(kind, input, existing, disposable.domains);
     const dataDir = options.dataDir ?? process.env.CAMPAIGNS_DATA_DIR ?? join(process.cwd(), ".campaigns-data");
     const ctx = {
         db,
@@ -998,7 +1010,7 @@ export function createCampaignsRouter(options = {}) {
         ...(options.verifySesWebhookSignature ? { verifySesWebhookSignature: options.verifySesWebhookSignature } : {}),
         telegramSend: options.telegramSend ?? sendTelegramMessage,
         now: options.now ?? (() => new Date()),
-        ready: migrate(db).then(async () => { await synchronizeTrackingHttps(db); }),
+        ready: migrate(db).then(async () => { await synchronizeTrackingHttps(db); await disposable.load(); }),
     };
     // A standalone router can be mounted before its first request. Keep the
     // rejected promise observable by request middleware without letting an
@@ -1016,7 +1028,11 @@ export function createCampaignsRouter(options = {}) {
         if (options.trustProxy !== undefined && request.app.get("trust proxy") !== options.trustProxy) {
             request.app.set("trust proxy", options.trustProxy);
         }
-        ctx.ready.then(() => loadUser(ctx, request)).then(() => next(), next);
+        ctx.ready.then(async () => {
+            await loadUser(ctx, request);
+            if (request.method !== "GET" && (request.path.startsWith("/subscribers") || request.path.startsWith("/public/subscribe")))
+                await disposable.load();
+        }).then(() => next(), next);
     });
     const audienceRepository = createPostgresAudienceRepository(db);
     const assertSubscriberIdsAllowed = async (request, ids, database = db) => {
@@ -1059,6 +1075,13 @@ export function createCampaignsRouter(options = {}) {
         scope: () => installationScope(db),
         assertSubscriberIdsAllowed,
         refreshListCounts: database => refreshListCounts((database ?? db)),
+        audit: (request, action, entityType, entityId, metadata) => audit(ctx, request, action, entityType, entityId, metadata),
+    }));
+    router.use(createEmailHygieneRouter({
+        assertSubscriberIdsAllowed,
+        refreshListCounts: database => refreshListCounts(database),
+        db: db, mutation, need, wrap, page, http, restrictedLists, assertListsAllowed,
+        scope: () => installationScope(db),
         audit: (request, action, entityType, entityId, metadata) => audit(ctx, request, action, entityType, entityId, metadata),
     }));
     const enqueueSubscriptionMail = async (event) => {
@@ -1569,7 +1592,8 @@ export function createCampaignsRouter(options = {}) {
                 throw http(400, `Reserved CSV column: ${key}`);
             validateCustomFieldDefinitions([{ key, label: key, type: "string" }]);
         }
-        let created = 0, updated = 0, skipped = 0;
+        let created = 0, updated = 0, skipped = 0, duplicates = 0, disposable = 0;
+        const importedEmails = new Set();
         const errors = [];
         await subscriberTransaction(db, async (tx) => {
             // Subscriber imports may provision string definitions under subscribers:manage
@@ -1590,7 +1614,11 @@ export function createCampaignsRouter(options = {}) {
                     const record = Object.create(null);
                     mapped.forEach((key, i) => { if (key !== "__IGNORE__")
                         record[key] = values[i]; });
-                    const address = email(record.email);
+                    const address = subscriberEmail(record.email);
+                    if (importedEmails.has(address)) {
+                        duplicates++;
+                        throw http(400, "Duplicate email in this file; first successfully imported row retained");
+                    }
                     const custom = Object.create(null);
                     for (const definition of definitions) {
                         if (!Object.prototype.hasOwnProperty.call(record, definition.key) || !record[definition.key]?.trim())
@@ -1619,6 +1647,7 @@ export function createCampaignsRouter(options = {}) {
                         const value = normalize("subscribers", { firstName: record.firstName?.trim() || old.firstName, lastName: record.lastName?.trim() || old.lastName, listIds, scope, metadata: validateCustomValues(metadata, definitions) }, old);
                         await tx.query("UPDATE campaigns.entities SET body=$1,updated_at=now() WHERE kind='subscribers' AND id=$2", [value, value.id]);
                         updated++;
+                        duplicates++;
                     }
                     else {
                         const metadata = { ...custom, ...(record.name?.trim() ? { name: record.name.trim() } : {}) };
@@ -1626,6 +1655,9 @@ export function createCampaignsRouter(options = {}) {
                         await tx.query("INSERT INTO campaigns.entities(kind,id,body) VALUES('subscribers',$1,$2)", [value.id, value]);
                         created++;
                     }
+                    importedEmails.add(address);
+                    if (checkEmailBasic(address, new Date(), disposableSource(db).domains).reasons.includes("disposable"))
+                        disposable++;
                     await tx.query("RELEASE SAVEPOINT import_row");
                 }
                 catch (error) {
@@ -1641,8 +1673,8 @@ export function createCampaignsRouter(options = {}) {
             }
         });
         await refreshListCounts(db);
-        await audit(ctx, request, "subscriber.import", "subscribers", null, { processed: rows.length, created, updated, skipped });
-        response.json({ data: { processed: rows.length, created, updated, skipped, errors } });
+        await audit(ctx, request, "subscriber.import", "subscribers", null, { processed: rows.length, created, updated, skipped, duplicates, disposable });
+        response.json({ data: { processed: rows.length, created, updated, skipped, duplicates, disposable, errors } });
     }));
     router.get("/subscribers/export", need("subscribers:export"), wrap(async (request, response) => {
         const listId = request.query.listId ? String(request.query.listId) : null;
@@ -3451,7 +3483,7 @@ export function createCampaignsRouter(options = {}) {
             throw http(503, "Not installed");
         const scope = await installationScope(db);
         const customMetadata = validateCustomValues(body.metadata ?? {}, await customFieldDefinitions(db, scope));
-        const address = email(body.email), token = randomBytes(32).toString("base64url"), id = randomUUID();
+        const address = subscriberEmail(body.email), token = randomBytes(32).toString("base64url"), id = randomUUID();
         await consumePublicBudget(db, hash(`subscribe-ip:${request.ip ?? "unknown"}:${listId}`), 20, "1 hour");
         await consumePublicBudget(db, hash(`subscribe-email:${address}:${listId}`), PUBLIC_SIGNUP_EMAIL_DAILY_LIMIT, "24 hours");
         const doubleOptIn = await resolveListDoubleOptIn(db, listId, settings.rows[0].settings.doubleOptIn !== false);
@@ -3671,6 +3703,7 @@ export function startCampaignsWorker(options = {}) {
     const pool = options.pool ?? new Pool({ connectionString: campaignsWorkerDatabaseUrl(options), max: 4 });
     const ownsPool = options.pool === undefined;
     let working = false;
+    let checkingEmails = false;
     let stopped = false;
     const timer = setInterval(() => {
         if (working || stopped)
@@ -3679,13 +3712,28 @@ export function startCampaignsWorker(options = {}) {
         runCampaignsWorker({ ...options, pool }).catch(error => options.onError?.(error)).finally(() => { working = false; });
     }, intervalMs);
     timer.unref();
+    // Keep DNS latency entirely off the campaign-delivery scheduler. This is a
+    // separate bounded read-only worker; it never sends or charges anything.
+    const emailTimer = setInterval(() => {
+        if (checkingEmails || stopped)
+            return;
+        checkingEmails = true;
+        migrate(pool).then(async () => {
+            if (!(await pool.query("SELECT 1 FROM campaigns.installation WHERE singleton=true")).rowCount)
+                return;
+            await advanceEmailHygiene(pool);
+        })
+            .catch(error => options.onError?.(error)).finally(() => { checkingEmails = false; });
+    }, intervalMs);
+    emailTimer.unref();
     return {
         async stop() {
             if (stopped)
                 return;
             stopped = true;
             clearInterval(timer);
-            while (working)
+            clearInterval(emailTimer);
+            while (working || checkingEmails)
                 await new Promise(resolve => setTimeout(resolve, 10));
             if (ownsPool)
                 await pool.end();

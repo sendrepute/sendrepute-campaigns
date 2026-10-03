@@ -92,16 +92,16 @@ antes de alterar uma instalação em produção.
 
 <a id="download-v0141"></a>
 
-## Download da v0.1.41
+## Download da v0.1.42
 
 Os administradores podem verificar a disponibilidade de releases estáveis do GitHub em Workspace Settings. Os anexos oficiais de arquivos compactados da Release versionada e os checksums SHA-256 têm preferência. Se esses anexos esperados estiverem ausentes, o verificador pode, alternativamente, resolver a mesma tag de release estável no repositório oficial para seu commit imutável e validar o manifesto de checksums vinculado `downloads/` daquele commit. Os links de download do repositório são fixados nesse commit, não em uma tag ou branch móvel. Anexos esperados inválidos ou duplicados nunca permitem esse fallback. Settings exibe um aviso de atualização, links de download/checksum e o comando de atualização manual documentado do servidor para um clone Git existente; ele nunca instala, extrai ou executa um download. Faça backup da instalação primeiro, em seguida, siga o procedimento de upgrade e reinício para o operador. Instalações baseadas em arquivos compactados devem seguir as instruções separadas de upgrade de arquivo e verificar os bytes baixados contra os checksums. Falhas no GitHub, metadados de publicação ausentes ou malformados e versões instaladas desconhecidas são reportados como indisponíveis, nunca como atualizados. Novos arquivos de release incluem os metadados da versão instalada; instalações antigas sem esses metadados não podem afirmar que estão atuais. A publicação da release e dos checksums são etapas separadas do operador, não realizadas pelo aplicativo.
 
-Prefere um arquivo versionado? Baixe o [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.zip)
-ou [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.41/downloads/sendrepute-campaigns-0.1.41.tar.gz),
-verifique os [checksums SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.41/downloads/sendrepute-campaigns-0.1.41-SHA256SUMS),
+Prefere um arquivo versionado? Baixe o [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.zip)
+ou [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.42/downloads/sendrepute-campaigns-0.1.42.tar.gz),
+verifique os [checksums SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.42/downloads/sendrepute-campaigns-0.1.42-SHA256SUMS),
 extraia e execute `./setup.sh` no local. Esses são downloads do repositório, **não**
 anexos binários de GitHub Release; **Code → Download ZIP** é um
-snapshot diferente. Consulte as [notas de release da v0.1.41](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.41).
+snapshot diferente. Consulte as [notas de release da v0.1.42](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.42).
 
 <a id="additional-tracking-hostnames"></a>
 
