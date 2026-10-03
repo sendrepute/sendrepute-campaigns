@@ -257,7 +257,7 @@ function trackingUrl(base, route) {
     result.hash = "";
     return result.toString();
 }
-async function selectBaseUrl(db, installationPublicUrl, domainId) {
+export async function selectBaseUrl(db, installationPublicUrl, domainId) {
     if (!domainId) {
         let base;
         try {
@@ -272,11 +272,30 @@ async function selectBaseUrl(db, installationPublicUrl, domainId) {
         }
         return base;
     }
+    if (typeof domainId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(domainId))
+        throw httpError(400, "Invalid domain ID");
     const result = await db.query("SELECT hostname,base_path FROM campaigns.custom_domains WHERE id=$1 AND verified_at IS NOT NULL", [domainId]);
     const row = result.rows[0];
     if (!row)
         throw httpError(409, "Custom domain is not verified");
     return new URL(`https://${normalizeCustomDomain(row.hostname)}${normalizeBasePath(row.base_path)}`);
+}
+/** List metadata is portable with existing list backups. Never trust an arbitrary URL. */
+export async function listPublicDomain(db, installationPublicUrl, listId) {
+    if (!listId)
+        return { baseUrl: installationPublicUrl, domainId: null };
+    const result = await db.query("SELECT body FROM campaigns.entities WHERE kind='lists' AND id=$1", [listId]);
+    const id = result.rows[0]?.body.metadata?.trackingDomainId;
+    if (id === undefined || id === null || id === "")
+        return { baseUrl: installationPublicUrl, domainId: null };
+    if (typeof id !== "string")
+        throw httpError(400, "Invalid list tracking domain");
+    return { baseUrl: (await selectBaseUrl(db, installationPublicUrl, id)).toString(), domainId: id };
+}
+export function recipientPublicList(subscriberLists, campaignLists) {
+    const memberships = Array.isArray(subscriberLists) ? subscriberLists.map(String) : [];
+    const targets = Array.isArray(campaignLists) ? campaignLists.map(String) : [];
+    return targets.find(id => memberships.includes(id)) ?? memberships[0];
 }
 export async function createCampaignTrackingLinks(db, input) {
     if (Buffer.byteLength(input.signingKey) < 32)
@@ -435,6 +454,9 @@ export function createDomainsTrackingRouter(deps) {
     }));
     router.delete("/domains/:id", deps.mutation, deps.need("settings:manage"), deps.wrap(async (request, response) => {
         const id = uuid(request.params.id);
+        const used = await deps.db.query("SELECT 1 FROM campaigns.entities WHERE kind='lists' AND body->'metadata'->>'trackingDomainId'=$1 LIMIT 1", [id]);
+        if (used.rows.length)
+            throw fail(409, "Domain is assigned to a list. Change the list domain before deleting it.");
         const result = await deps.db.query("DELETE FROM campaigns.custom_domains WHERE id=$1 RETURNING hostname", [id]);
         if (!result.rows[0])
             throw fail(404, "Domain not found");

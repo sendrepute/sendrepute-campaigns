@@ -7,6 +7,7 @@ type Site = {
     expiresAt?: string;
     certificateRevision?: string;
     trackingHosts?: TrackingHost[];
+    publicSubscriptionRoutes?: boolean;
 };
 type TrackingHost = {
     hostname: string;

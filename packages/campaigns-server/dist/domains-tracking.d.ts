@@ -30,6 +30,13 @@ export declare function validateStoredDestination(value: unknown): string;
 /** Collect only eligible anchors; position-specific replacement never alters text, image URLs or other attributes. */
 export declare function campaignClickDestinations(html: string, excluded?: string[]): string[];
 export declare function rewriteCampaignClickAnchors(html: string, destinations: string[], links: string[]): string;
+export declare function selectBaseUrl(db: DomainsTrackingDb, installationPublicUrl: string, domainId?: string | null): Promise<URL>;
+/** List metadata is portable with existing list backups. Never trust an arbitrary URL. */
+export declare function listPublicDomain(db: DomainsTrackingDb, installationPublicUrl: string, listId?: string): Promise<{
+    baseUrl: string;
+    domainId: string | null;
+}>;
+export declare function recipientPublicList(subscriberLists: unknown, campaignLists: unknown): string | undefined;
 export type CreateTrackingLinksInput = {
     signingKey: Buffer | string;
     installationPublicUrl: string;

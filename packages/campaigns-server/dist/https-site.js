@@ -176,7 +176,9 @@ export function renderSiteCaddyfile(site, hosts, certificate) {
     let config = `${site.domain} {\n  encode zstd gzip\n${routes(grouped.get(site.domain) ?? [])}  handle {\n    reverse_proxy campaigns:8080\n  }\n${leaf ? manualTls : ""}}\n`;
     grouped.delete(site.domain); // A verified primary hostname reuses its one site.
     for (const [hostname, entries] of grouped) {
-        config += `\n${hostname} {\n  encode zstd gzip\n${routes(entries)}  handle /public/campaigns/* {\n    reverse_proxy campaigns:8080\n  }\n  handle {\n    respond 404\n  }\n${leaf?.checkHost(hostname, { subject: "never" }) ? manualTls : ""}}\n`;
+        const publicPages = entries.filter(host => host.basePath !== "/campaigns/").map(host => ["subscribe", "unsubscribe"].map(page => `  handle ${JSON.stringify(`${host.basePath}${page}`)} {\n    redir /campaigns/${page}?{query} 302\n  }\n`).join("")).join("");
+        const publicApis = entries.filter(host => host.basePath !== "/" && host.basePath !== "/campaigns/").map(host => `  handle ${JSON.stringify(`${host.basePath}api/campaigns/public/*`)} {\n    uri strip_prefix ${JSON.stringify(host.basePath.slice(0, -1))}\n    reverse_proxy campaigns:8080\n  }\n`).join("");
+        config += `\n${hostname} {\n  encode zstd gzip\n${routes(entries)}${publicPages}${publicApis}  @publicSubscription path /campaigns/subscribe /campaigns/unsubscribe /campaigns/assets/* /api/campaigns/public/*\n  handle @publicSubscription {\n    reverse_proxy campaigns:8080\n  }\n  handle /public/campaigns/* {\n    reverse_proxy campaigns:8080\n  }\n  handle {\n    respond 404\n  }\n${leaf?.checkHost(hostname, { subject: "never" }) ? manualTls : ""}}\n`;
     }
     return config;
 }
@@ -186,7 +188,7 @@ function stageSite(site, hosts, pem) {
     mkdirSync(dir, { mode: 0o700 });
     const metadata = { domain: site.domain, mode: site.mode, revision, expiresAt: site.expiresAt,
         ...(site.mode !== "automatic" ? { certificateRevision: pem ? revision : site.certificateRevision ?? site.revision } : {}),
-        trackingHosts: normalizeHosts(hosts) };
+        trackingHosts: normalizeHosts(hosts), publicSubscriptionRoutes: true };
     writeFileSync(join(dir, "Caddyfile"), renderSiteCaddyfile(metadata, hosts, pem?.certificate), { mode: 0o600, flag: "wx" });
     if (pem) {
         writeFileSync(join(dir, "fullchain.pem"), pem.certificate, { mode: 0o600, flag: "wx" });
@@ -252,7 +254,7 @@ export async function reconcileTrackingHttps(db, retryRejected = false) {
             rejected = status.revision === site.revision && status.state === "rejected";
         }
         catch { /* no controller result yet */ }
-        if (JSON.stringify(hosts) !== JSON.stringify(site.trackingHosts ?? []) || (retryRejected && rejected))
+        if (!site.publicSubscriptionRoutes || JSON.stringify(hosts) !== JSON.stringify(site.trackingHosts ?? []) || (retryRejected && rejected))
             stageSite(site, hosts);
     });
 }

@@ -19,6 +19,7 @@ import { cancelQueuedSubscriberJobs, createHousekeepingRouter } from "./housekee
 import { createRulesWebhooksRouter, recordRuleEvent, runRulesWebhookWorker } from "./rules-webhooks.js";
 import { createSubscriptionCustomizationRouter, getSubscriptionCustomization, onSubscribeConfirmed, onUnsubscribe, resolveListDoubleOptIn } from "./subscription-customization.js";
 import { campaignClickDestinations, rewriteCampaignClickAnchors, createCampaignTrackingLinks, createDomainsTrackingRouter, createPublicCampaignsTrackingRouter, createPostgresTrackingEventRecorder } from "./domains-tracking.js";
+import { listPublicDomain, recipientPublicList, selectBaseUrl } from "./domains-tracking.js";
 import { createProviderAnalyticsRouter, ingestProviderAnalyticsWebhook } from "./provider-analytics.js";
 import { publicSubscriptionFailure } from "./public-subscription-errors.js";
 export * from "./delivery-contract.generated.js";
@@ -1787,6 +1788,9 @@ export function createCampaignsRouter(options = {}) {
             if (kind === "subscribers")
                 scopedInput.metadata = validateCustomValues(scopedInput.metadata ?? {}, await customFieldDefinitions(db, String(scopedInput.scope)));
             const value = normalize(kind, scopedInput);
+            if (kind === "lists" && value.metadata?.trackingDomainId != null) {
+                await selectBaseUrl(db, "", value.metadata.trackingDomainId);
+            }
             if (kind === "subscribers" || kind === "campaigns") {
                 if (!Array.isArray(value.listIds) || new Set(value.listIds.map(String)).size !== value.listIds.length)
                     throw http(400, "listIds must contain unique list IDs");
@@ -1896,6 +1900,9 @@ export function createCampaignsRouter(options = {}) {
             if (kind === "lists" || kind === "templates" || kind === "campaigns")
                 await getBrandDefaults(db, await installationScope(db), input.brandId === undefined ? existing.brandId : input.brandId);
             const value = normalize(kind, input, existing);
+            if (kind === "lists" && value.metadata?.trackingDomainId != null) {
+                await selectBaseUrl(db, "", value.metadata.trackingDomainId);
+            }
             if (kind === "campaigns") {
                 if (!Array.isArray(value.listIds) || new Set(value.listIds.map(String)).size !== value.listIds.length)
                     throw http(400, "listIds must contain unique list IDs");
@@ -3307,7 +3314,7 @@ export function createCampaignsRouter(options = {}) {
         const installation = await db.query("SELECT settings FROM campaigns.installation");
         if (!installation.rows[0])
             throw http(503, "Not installed");
-        const signupUrl = publicSubscriptionUrl(String(installation.rows[0].settings.publicUrl), listId, subscriptionListToken(ctx.key, listId));
+        const signupUrl = publicSubscriptionUrl((await listPublicDomain(db, String(installation.rows[0].settings.publicUrl), listId)).baseUrl, listId, subscriptionListToken(ctx.key, listId));
         response.json({ data: { signupUrl } });
     }));
     router.use(["/public/identity", "/public/unsubscribe", "/public/subscription-status"], (_request, response, next) => {
@@ -3491,7 +3498,7 @@ export function createCampaignsRouter(options = {}) {
                 await refreshListCounts(tx);
             }
             else if (!alreadyJoined && !suppressed) {
-                const url = publicCampaignsPageUrl(String(settings.rows[0].settings.publicUrl), "subscribe");
+                const url = publicCampaignsPageUrl((await listPublicDomain(tx, String(settings.rows[0].settings.publicUrl), listId)).baseUrl, "subscribe");
                 url.searchParams.set("token", token);
                 await tx.query("UPDATE campaigns.tokens SET consumed_at=now() WHERE purpose='subscribe' AND list_id=$1 AND lower(email)=$2 AND consumed_at IS NULL AND expires_at<=now()", [listId, address]);
                 const inserted = await tx.query("INSERT INTO campaigns.tokens(token_hash,purpose,list_id,email,payload,expires_at) VALUES($1,'subscribe',$2,$3,$4,now()+interval '48 hours') ON CONFLICT DO NOTHING RETURNING token_hash", [hash(token), listId, address, { firstName: body.firstName ?? null, lastName: body.lastName ?? null, metadata: customMetadata, scope }]);
@@ -3867,12 +3874,14 @@ async function runCampaignsWorkerLocked(options, db) {
                 typeof subscriber.email !== "string")) {
                 throw Object.assign(new Error("A recipient unsubscribe link is required"), { deliveryState: "not-sent", code: "UNSUBSCRIBE_UNAVAILABLE" });
             }
+            const publicListId = recipientPublicList(subscriber.listIds, campaign.listIds);
+            const listDomain = await listPublicDomain(db, String(settings.rows[0]?.settings.publicUrl), publicListId);
             const baseUrl = marketing || job.recipient_id && Array.isArray(subscriber.listIds) && subscriber.listIds.length
-                ? deliveryPublicUrl(settings.rows[0]?.settings.publicUrl) : undefined;
+                ? deliveryPublicUrl(listDomain.baseUrl) : undefined;
             let token;
             if (baseUrl && job.recipient_id && Array.isArray(subscriber.listIds) && subscriber.listIds.length) {
                 token = randomBytes(32).toString("base64url");
-                await db.query("INSERT INTO campaigns.tokens(token_hash,purpose,subscriber_id,list_id,email,job_id,expires_at) VALUES($1,'unsubscribe',$2,$3,$4,$5,now()+interval '180 days')", [hash(token), job.recipient_id, subscriber.listIds[0], subscriber.email, job.id]);
+                await db.query("INSERT INTO campaigns.tokens(token_hash,purpose,subscriber_id,list_id,email,job_id,expires_at) VALUES($1,'unsubscribe',$2,$3,$4,$5,now()+interval '180 days')", [hash(token), job.recipient_id, publicListId, subscriber.email, job.id]);
             }
             const unsubscribe = token ? (() => {
                 const url = publicCampaignsPageUrl(baseUrl, "unsubscribe");
@@ -3929,7 +3938,7 @@ async function runCampaignsWorkerLocked(options, db) {
                         const original = rendered;
                         const links = await createCampaignTrackingLinks(trackingClient, {
                             signingKey: key, installationPublicUrl: String(settings.rows[0]?.settings.publicUrl),
-                            domainId: typeof campaign.metadata?.trackingDomainId === "string" ? String(campaign.metadata.trackingDomainId) : null,
+                            domainId: typeof campaign.metadata?.trackingDomainId === "string" ? String(campaign.metadata.trackingDomainId) : listDomain.domainId,
                             jobId: job.id, campaignId: job.campaign_id, recipientId: job.recipient_id,
                             subject: String(campaign.subject ?? template.subject), html: rendered.html, text: rendered.text,
                             trackingEnabled: allowed, recipientTrackingOptOut: !allowed,
