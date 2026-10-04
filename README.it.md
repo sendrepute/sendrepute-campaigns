@@ -85,16 +85,16 @@ prima di modificare un'installazione live.
 
 <a id="download-v0141"></a>
 
-## Download v0.1.43
+## Download v0.1.44
 
 Gli amministratori possono verificare la presenza di release stabili di GitHub in Workspace Settings. Sono preferibili gli archivi ufficiali versionati delle Release e i relativi allegati con checksum SHA-256. Se tali allegati previsti sono assenti, il sistema di controllo può invece risolvere il medesimo tag della release stabile nel repository ufficiale verso il suo commit immutabile e convalidare il manifesto dei checksum `downloads/` vincolato a quel commit. I link di download del repository sono ancorati a quel commit, non a un tag o a un branch modificabili. La presenza di allegati previsti non validi o duplicati non consente mai questo fallback. La pagina Settings mostra una notifica di aggiornamento, i link per il download e il checksum e il comando documentato per l'aggiornamento manuale del server destinato a un clone Git esistente; non installa, estrae o esegue mai alcun download. Esegui prima il backup dell'installazione, quindi segui la procedura dell'operatore per l'aggiornamento e il riavvio. Le installazioni tramite archivio devono seguire le istruzioni separate per l'aggiornamento degli archivi e verificare i byte scaricati confrontandoli con i checksum. Eventuali disservizi di GitHub, metadati di pubblicazione assenti o malformati e versioni installate sconosciute vengono segnalati come non disponibili, mai come aggiornati. I nuovi archivi di release includono i propri metadati della versione installata; le vecchie installazioni prive di questi metadati non possono risultare aggiornate. La pubblicazione delle release e dei checksum sono operazioni distinte a carico dell'operatore, non eseguite dall'applicazione.
 
-Preferisci un archivio versionato? Scarica lo [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.zip)
-o il [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.tar.gz),
-verifica i [checksum SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.43/downloads/sendrepute-campaigns-0.1.43-SHA256SUMS),
+Preferisci un archivio versionato? Scarica lo [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.44/downloads/sendrepute-campaigns-0.1.44.zip)
+o il [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.44/downloads/sendrepute-campaigns-0.1.44.tar.gz),
+verifica i [checksum SHA-256](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.44/downloads/sendrepute-campaigns-0.1.44-SHA256SUMS),
 estrai ed esegui `./setup.sh` al suo interno. Questi sono download dal repository, **non**
 allegati binari di GitHub Release; **Code → Download ZIP** è uno
-snapshot differente. Consulta le [note di rilascio della v0.1.43](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.43).
+snapshot differente. Consulta le [note di rilascio della v0.1.44](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.44).
 
 <a id="additional-tracking-hostnames"></a>
 

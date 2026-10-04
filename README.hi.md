@@ -76,16 +76,16 @@ Settings** में उस URL को बदलकर `https://YOUR_HOSTNAME/ca
 
 <a id="download-v0141"></a>
 
-## v0.1.43 डाउनलोड करें
+## v0.1.44 डाउनलोड करें
 
 एडमिनिस्ट्रेटर Workspace Settings में स्थिर (stable) GitHub रिलीज़ की जांच कर सकते हैं। आधिकारिक वर्ज़न वाले Release आर्काइव और SHA-256 चेकसम अटैचमेंट को प्राथमिकता दी जाती है। यदि वे अपेक्षित अटैचमेंट मौजूद नहीं हैं, तो चेकर इसके बजाय आधिकारिक रिपॉजिटरी में उसी स्थिर रिलीज़ टैग को उसके अपरिवर्तनीय कमिट (immutable commit) पर रिज़ॉल्व कर सकता है और उस कमिट के बाउंडेड `downloads/` चेकसम मैनिफेस्ट को मान्य (validate) कर सकता है। रिपॉजिटरी डाउनलोड लिंक उसी कमिट पर पिन किए गए होते हैं, न कि किसी मूवेबल टैग या ब्रांच पर। अमान्य या डुप्लीकेट अपेक्षित अटैचमेंट कभी भी इस फ़ॉलबैक (fallback) की अनुमति नहीं देते हैं। Settings में एक अपडेट नोटिस, डाउनलोड/चेकसम लिंक और मौजूदा Git क्लोन के लिए डॉक्यूमेंट किया गया मैनुअल सर्वर अपडेट कमांड दिखाई देता है; यह कभी भी किसी डाउनलोड को इंस्टॉल, एक्सट्रैक्ट (extract) या निष्पादित (execute) नहीं करता है। सबसे पहले इंस्टॉलेशन का बैकअप लें, फिर ऑपरेटर अपग्रेड और रिस्टार्ट प्रक्रिया का पालन करें। आर्काइव इंस्टॉलेशन के लिए अलग से दिए गए आर्काइव अपग्रेड निर्देशों का पालन करना होगा और चेकसम के विरुद्ध डाउनलोड किए गए बाइट्स को वेरीफाई करना होगा। GitHub विफलताओं, अनुपस्थित या खराब पब्लिकेशन मेटाडेटा और अज्ञात इंस्टॉल किए गए वर्ज़न्स को अनुपलब्ध (unavailable) के रूप में रिपोर्ट किया जाता है, कभी भी अप-टू-डेट (up to date) के रूप में नहीं। नए रिलीज़ आर्काइव में उनका इंस्टॉल किया गया वर्ज़न मेटाडेटा शामिल होता है; इस मेटाडेटा के बिना पुराने इंस्टॉलेशन वर्तमान (current) होने का दावा नहीं कर सकते। रिलीज़ पब्लिशिंग और चेकसम अलग-अलग ऑपरेटर चरण हैं, जो एप्लिकेशन द्वारा नहीं किए जाते हैं।
 
-क्या आप वर्ज़न वाले आर्काइव को प्राथमिकता देते हैं? [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.zip)
-या [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.tar.gz) डाउनलोड करें,
-[SHA-256 चेकसम](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.43/downloads/sendrepute-campaigns-0.1.43-SHA256SUMS) वेरीफाई करें,
+क्या आप वर्ज़न वाले आर्काइव को प्राथमिकता देते हैं? [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.44/downloads/sendrepute-campaigns-0.1.44.zip)
+या [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.44/downloads/sendrepute-campaigns-0.1.44.tar.gz) डाउनलोड करें,
+[SHA-256 चेकसम](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.44/downloads/sendrepute-campaigns-0.1.44-SHA256SUMS) वेरीफाई करें,
 एक्सट्रैक्ट करें, और वहां `./setup.sh` रन करें। ये रिपॉजिटरी डाउनलोड हैं, GitHub रिलीज़ बाइनरी अटैचमेंट **नहीं**;
 **Code → Download ZIP** एक अलग
-स्नैपशॉट है। [v0.1.43 रिलीज़ नोट्स](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.43) देखें।
+स्नैपशॉट है। [v0.1.44 रिलीज़ नोट्स](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.44) देखें।
 
 <a id="additional-tracking-hostnames"></a>
 

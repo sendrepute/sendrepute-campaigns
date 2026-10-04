@@ -91,6 +91,8 @@ export type ClassificationReason = {
     weight: number;
 };
 export type ClassificationResult = {
+    isGuest?: boolean;
+    guestResetsAt?: string;
     label: "inbox" | "spam";
     spamProbability: number;
     flaggedTermCount?: number;
@@ -317,6 +319,8 @@ export type CustomerManualEditInput = {
     editMode: "manual" | "remove_all";
 };
 export type CustomerManualEditResult = {
+    isGuest?: boolean;
+    guestResetsAt?: string;
     label: "inbox" | "spam";
     spamProbability: number;
     flaggedTermCount?: number;

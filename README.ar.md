@@ -92,16 +92,16 @@ sudo docker compose exec campaigns cat /var/lib/sendrepute-campaigns/installer-t
 
 <a id="download-v0141"></a>
 
-## تنزيل الإصدار v0.1.43
+## تنزيل الإصدار v0.1.44
 
 يمكن للمسؤولين التحقق من إصدارات GitHub المستقرة في إعدادات مساحة العمل (Workspace Settings). يُفضل استخدام أرشيفات الإصدارات الرسمية المرقّمة ومرفقات المجاميع الاختبارية (checksums) من نوع SHA-256. في حال غياب هذه المرفقات المتوقعة، يمكن لأداة الفحص بدلاً من ذلك ربط علامة الإصدار المستقر ذاتها في المستودع الرسمي بالـ commit الثابت الخاص بها والتحقق من بيان المجموع الاختباري المرفق `downloads/` المرتبط بذلك الـ commit. يتم تثبيت روابط تنزيل المستودع على ذلك الـ commit، وليس على علامة (tag) أو فرع (branch) قابل للتغيير. لا يُسمح أبداً بهذا الإجراء البديل إذا كانت المرفقات المتوقعة غير صالحة أو مكررة. تعرض الإعدادات إشعاراً بالتحديث وروابط التنزيل/المجاميع الاختبارية وأمر التحديث اليدوي الموثّق للخادم الخاص بنسخة Git الحالية؛ ولا تقوم أبداً بتثبيت أو استخراج أو تنفيذ أي تنزيل. قم بإجراء نسخ احتياطي للتثبيت أولاً، ثم اتبع إجراءات الترقية وإعادة التشغيل الخاصة بالمشغل. يجب أن تتبع تثبيتات الأرشيف تعليمات ترقية الأرشيف المنفصلة والتحقق من البايتات المنزّلة ومطابقتها مع المجاميع الاختبارية. يتم الإبلاغ عن حالات فشل GitHub أو غياب البيانات الوصفية للنشر أو تشوهها أو عدم معرفة الإصدارات المثبتة على أنها غير متوفرة، ولا تُعتبر أبداً محدّثة. تتضمن أرشيفات الإصدارات الجديدة البيانات الوصفية لإصدارها المثبت؛ ولا يمكن للتثبيتات الأقدم التي تفتقر إلى هذه البيانات الوصفية ادعاء أنها الأحدث. يُعد نشر الإصدارات وإجراء المجاميع الاختبارية خطوات تشغيلية منفصلة لا يُنفذها التطبيق.
 
-هل تفضل أرشيفاً مرقماً بإصدار؟ نزّل [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.zip)
-أو [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.43/downloads/sendrepute-campaigns-0.1.43.tar.gz)،
-وتحقق من [مجاميع SHA-256 الاختبارية](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.43/downloads/sendrepute-campaigns-0.1.43-SHA256SUMS)،
+هل تفضل أرشيفاً مرقماً بإصدار؟ نزّل [ZIP](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.44/downloads/sendrepute-campaigns-0.1.44.zip)
+أو [tar.gz](https://github.com/sendrepute/sendrepute-campaigns/raw/refs/tags/v0.1.44/downloads/sendrepute-campaigns-0.1.44.tar.gz)،
+وتحقق من [مجاميع SHA-256 الاختبارية](https://github.com/sendrepute/sendrepute-campaigns/blob/v0.1.44/downloads/sendrepute-campaigns-0.1.44-SHA256SUMS)،
 ثم استخرج الملفات وشغّل `./setup.sh` هناك. هذه تنزيلات من المستودع، **وليست**
 مرفقات ثنائية لإصدارات GitHub؛ خيار **Code → Download ZIP** يُعد لقطة
-مختلفة. راجع [ملاحظات الإصدار v0.1.43](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.43).
+مختلفة. راجع [ملاحظات الإصدار v0.1.44](https://github.com/sendrepute/sendrepute-campaigns/releases/tag/v0.1.44).
 
 <a id="additional-tracking-hostnames"></a>
 
