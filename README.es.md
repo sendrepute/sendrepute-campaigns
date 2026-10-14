@@ -125,8 +125,7 @@ o se rota su desafío, de modo que los enlaces entregados no se revocan silencio
 Mantenga disponibles sus DNS y la renovación de certificados. Preserve el libro de aprobaciones
 de PostgreSQL y los volúmenes de HTTPS/Caddy durante las actualizaciones/copias de seguridad. Las instalaciones con certificado
 principal manual pueden interrumpir brevemente las conexiones durante una
-actualización/reinicio controlado únicamente de Caddy. Consulte el documento `SMTP-TRACKING.md` empaquetado
-para las definiciones de estado, la retención de enlaces históricos y los límites de fallo/reintento.
+actualización/reinicio controlado únicamente de Caddy.
 
 <a id="update"></a>
 

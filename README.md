@@ -131,8 +131,7 @@ or its challenge rotated, so delivered links are not silently revoked.
 Keep their DNS and certificate renewal available. Preserve the PostgreSQL
 approval ledger and HTTPS/Caddy volumes during upgrades/backups. Manual-primary
 certificate installations may briefly interrupt connections during a
-controlled Caddy-only update/restart. See the packaged `SMTP-TRACKING.md`
-for status definitions, historic-link retention, and failure/retry boundaries.
+controlled Caddy-only update/restart.
 
 <a id="update"></a>
 

@@ -17,7 +17,7 @@ events in the provider analytics view. A saved endpoint is not proof of delivery
 | Postmark API / Postmark SMTP | Dedicated Basic authenticated callback | Outbound message details/events | Reveal dedicated Basic credentials in provider edit; paste the authenticated HTTPS callback into Postmark webhooks. Select delivery, bounce, open, click, spam complaint and subscription events where offered. Postmark does not sign webhooks; it recommends Basic authentication and optionally provider IP allowlisting. |
 | Brevo API | Dedicated Basic authenticated callback | SMTP statistics events | Reveal dedicated Basic credentials in provider edit; paste the authenticated HTTPS URL into a Brevo **transactional** webhook. Choose delivered, soft/hard bounce, complaint, opening, click and unsubscribe. Brevo also documents bearer authentication but this installation uses its documented Basic URL method. Provider retention/permissions apply to polling. |
 | SMTP.com API | No verified supported callback | None | Provider public API documentation confirmed sending authentication, not event callback authentication or payload schema. Legacy manual bearer receiver is not a supported self-service integration; analytics is unavailable until officially documented callback support can be validated. |
-| Generic SMTP / other SMTP presets | None | None | SMTP accept is not delivered. Separate opt-in local open/click tracking is documented in `lib/campaigns-server/SMTP-TRACKING.md`; pixels can be blocked and scanners can click. |
+| Generic SMTP / other SMTP presets | None | None | SMTP accept is not delivered. |
 
 Webhook notifications require matching locally sent message IDs. Signed
 callbacks have bounded timestamp freshness, SNS enforces a topic allowlist,

@@ -131,8 +131,7 @@ ou seu desafio é rotacionado, para que links entregues não sejam revogados sil
 Mantenha o DNS e a renovação de certificados deles disponíveis. Preserve o ledger de
 aprovação do PostgreSQL e os volumes do HTTPS/Caddy durante upgrades/backups. Instalações com certificado
 primário manual podem interromper brevemente as conexões durante uma
-atualização/reinício controlado focado apenas no Caddy. Consulte o `SMTP-TRACKING.md` empacotado
-para definições de status, retenção de links históricos e limites de falhas/tentativas.
+atualização/reinício controlado focado apenas no Caddy.
 
 <a id="update"></a>
 

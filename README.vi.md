@@ -130,8 +130,7 @@ hoặc challenge của nó bị xoay vòng, vì vậy các liên kết đã gử
 Hãy duy trì DNS và khả năng gia hạn chứng chỉ của chúng. Hãy bảo tồn sổ cái phê duyệt
 PostgreSQL và các volume HTTPS/Caddy trong quá trình nâng cấp/sao lưu. Các bản cài đặt có
 chứng chỉ chính thủ công có thể làm gián đoạn kết nối trong thời gian ngắn trong quá trình
-cập nhật/khởi động lại chỉ dành cho Caddy một cách có kiểm soát. Xem tệp `SMTP-TRACKING.md` được đóng gói
-để biết các định nghĩa trạng thái, việc giữ lại liên kết lịch sử, và các giới hạn thất bại/thử lại.
+cập nhật/khởi động lại chỉ dành cho Caddy một cách có kiểm soát.
 
 <a id="update"></a>
 

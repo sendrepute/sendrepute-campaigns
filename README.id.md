@@ -131,8 +131,7 @@ atau challenge-nya dirotasi, sehingga tautan yang telah terkirim tidak dicabut s
 Pastikan DNS dan pembaruan sertifikatnya tetap tersedia. Pertahankan buku besar persetujuan
 PostgreSQL dan volume HTTPS/Caddy selama upgrade/backup. Instalasi sertifikat utama
 manual mungkin dapat mengganggu koneksi sesaat selama
-update/restart yang terkontrol khusus untuk Caddy. Lihat `SMTP-TRACKING.md` bawaan
-untuk definisi status, retensi tautan historis, dan batasan kegagalan/coba ulang.
+update/restart yang terkontrol khusus untuk Caddy.
 
 <a id="update"></a>
 

@@ -130,8 +130,7 @@ ou que son défi est renouvelé, de sorte que les liens distribués ne sont pas 
 Maintenez leur DNS et le renouvellement des certificats disponibles. Préservez le registre d'approbation PostgreSQL
 et les volumes HTTPS/Caddy lors des mises à niveau/sauvegardes. Les installations avec un certificat
 principal manuel peuvent brièvement interrompre les connexions lors d'une
-mise à jour/redémarrage contrôlé exclusif à Caddy. Consultez le `SMTP-TRACKING.md` inclus
-pour les définitions d'état, la conservation des liens historiques et les limites d'échec/réessai.
+mise à jour/redémarrage contrôlé exclusif à Caddy.
 
 <a id="update"></a>
 

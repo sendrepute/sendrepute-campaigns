@@ -114,8 +114,7 @@ veya sınaması (challenge) yenilendiğinde (rotated) korunur; böylece teslim e
 Bu alan adlarının DNS'ini ve sertifika yenileme işlemlerini erişilebilir durumda tutun. Yükseltmeler/yedeklemeler sırasında PostgreSQL
 onay defterini (approval ledger) ve HTTPS/Caddy birimlerini (volumes) koruyun. Birincil sertifikanın manuel olarak kurulduğu durumlarda,
 sadece Caddy'yi kapsayan kontrollü bir güncelleme/yeniden başlatma işlemi sırasında bağlantılar
-kısa süreliğine kesintiye uğrayabilir. Durum tanımları, geçmiş bağlantıların muhafazası (retention) ve başarısızlık/yeniden deneme sınırları için paket içindeki `SMTP-TRACKING.md`
-belgesine göz atın.
+kısa süreliğine kesintiye uğrayabilir.
 
 <a id="update"></a>
 

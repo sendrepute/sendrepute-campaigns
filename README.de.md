@@ -130,8 +130,7 @@ Zuvor genehmigte Routen bleiben erhalten, selbst wenn eine auswählbare Domain g
 oder deren Challenge rotiert wird. Dadurch werden bereits zugestellte Links nicht heimlich ungültig.
 Stellen Sie sicher, dass deren DNS und Zertifikatserneuerung weiterhin verfügbar bleiben. Bewahren Sie das PostgreSQL-
 Genehmigungs-Ledger und die HTTPS/Caddy-Volumes bei Upgrades oder Backups auf. Bei Installationen mit manuellem Primärzertifikat
-kann es während eines kontrollierten reinen Caddy-Updates/-Neustarts zu einer kurzen Unterbrechung der Verbindungen kommen. In der enthaltenen `SMTP-TRACKING.md`
-finden Sie Statusdefinitionen, Informationen zur Beibehaltung historischer Links sowie Grenzwerte für Fehler und erneute Versuche.
+kann es während eines kontrollierten reinen Caddy-Updates/-Neustarts zu einer kurzen Unterbrechung der Verbindungen kommen.
 
 <a id="update"></a>
 
