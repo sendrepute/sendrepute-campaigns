@@ -501,5 +501,3 @@ locks, or adjust balances directly as a recovery procedure.
 
 Health checks show process/database readiness only; they do not prove that a
 mail provider or SendRepute is reachable.
-
-# Edit config privately: LOCAL_DIR,
