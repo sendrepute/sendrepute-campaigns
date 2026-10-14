@@ -42,8 +42,7 @@ There are no default administrator credentials.
 - Implements the same-origin API in `API-CONTRACT.md` at `/api/campaigns`.
 - `GET /api/campaigns/status` waits for migration/database readiness and is the
   container health-check endpoint.
-- Installation wizard route is `/campaigns/setup`; API setup accepts the
-  single-use token only over the setup operation.
+- Installation wizard route is `/campaigns/install`; API setup is `POST /api/campaigns/setup` and accepts the single-use token only for that operation.
 - Public demo reads are read-only. Authenticated mutations use secure
   HTTP-only same-site cookies, CSRF validation, role checks and audit logging.
 - Provider/API secrets are encrypted at rest and never returned. Billable
